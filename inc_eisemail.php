@@ -1,22 +1,67 @@
 <?php
+/****************************************************************/
+/*
+eiseMail class
+    
+    This class is designed to send mail messages with specified SMTP server.
 
+    It can be used in the following way:
+    1)  initialize object with connection settings to the SMTP server
+    2)  Add messages to send queue using addMessage() method (attachments can be added to messages as associative array members, class will handle them in proper way)
+    3)  Send queue using send() method, it returns message array with timestamps when messages were actually sent.
+    
+    send() method uses sockets to connect to SMTP server. It supports host authentication and TLS channel encryption. It pushes the message queue to the server right after connection is established, channel encrypted and authentication succeeded. 
+    
+    Class has been tested for proper communication with the following SMTP servers:
+    -   Postfix/Sendmail
+    -   Microsoft Exchange
+    -   Google mail
+    -   Microsoft Office365
+    
+    Actual example can be found in eiseMail_demo.php script attached to this package.
+    
+    In case of exception, class methods are throwing eiseMailException objects with mail message queue in its actual state so you can trace what messages were sent and what were not.
+    PHP version: >5.1
+    PHP extensions required: OpenSSL
+
+    
+    author: Ilya Eliseev (ie@e-ise.com)
+    contributors: Dmitry Zakharov (dmitry.zakharov@ru.yusen-logistics.com), Igor Zhuravlev (igor.zhuravlev@ru.yusen-logistics.com)
+    sponsors: Yusen Logistics Rus LLC, Russia
+    version: 1.0
+
+     * Developed under GNU General Public License, version 3:
+     * http://www.gnu.org/licenses/lgpl.txt
+     
+**/
+/****************************************************************/
 class eiseMail {
 
 public $arrMessages = array();
 static $Boundary = "==Multipart_Boundary_eiseMail";
+const keyEscapePrefix = '##';
+const keyEscapeSuffix = '##';
 
 function __construct($arrConfig){
     $arrDefaultConfig = Array(
-          "Content-Type" => "text/plain"
-          , 'charset' => "utf-8"
-          , "host" => "localhost"
-          , "port" => "25"
-          , "login" => ""
-          , "password" => ""
-          , "localhost" => "localhost"
-          , 'tls' => false
-          , 'subjPrefix' => ''
-          , 'debug' => true
+
+          "Content-Type" => "text/plain" // message body content type
+          , 'charset' => "utf-8" // message body charset
+          , "host" => "localhost" // SMTP server host name / IP address
+          , "port" => "25" // SMTP server port
+          , 'tls' => false // flag use TLS channel encryption
+          , "login" => ""  // SMPT server login
+          , "password" => "" // SMPT server password
+          , "localhost" => "localhost" // defines how to introduce yourself to SMTP server with HELO/EHLO SMTP command
+          
+          , 'Subject' => '' // default subject for message queue 
+          , 'Head' => '' // default message body head
+          , 'Bottom' => '' // default message bottom 
+
+          , 'debug' => true // when set to TRUE class methods are sending actual conversation data to standard output, mail is actually sent to 'rcpt_to_debug' address
+          , 'mail_from_debug' => 'developer@e-ise.com' // MAIL FROM: to be used when debug is TRUE
+          , 'rcpt_to_debug' => 'mailbox_for_test_messages@e-ise.com' // RCPT TO: to be used when debug is TRUE
+
           );
     
     $this->conf = array_merge($arrDefaultConfig, $arrConfig);
@@ -33,7 +78,12 @@ function addMessage ($arrMsg){
         , 'rcpt_to' => $this->conf['rcpt_to']
         , 'Content-Type' => $this->conf['Content-Type']
         , 'charset' => $this->conf['charset']
-        , 'subjPrefix' => $this->conf['subjPrefix']
+        , 'CC' => null
+        , 'BCC' => null
+          , 'Subject' => $this->conf['Subject']
+          , 'Head' => $this->conf['Head']
+          , 'Text' => ''
+          , 'Bottom' => $this->conf['Bottom']
         , 'Attachments' => array()
     );
 
@@ -117,13 +167,13 @@ function send($arrMsg=null){
             
             $this->say( $strMessage."\r\n.\r\n", array(250));
             
-            $strReset = "RSET\r\n";
-            $this->say( $strReset, array(250));
-
             $this->arrMessages[$ix]['send_time'] = mktime();
         } catch(eiseMailException $e){
             $this->arrMessages[$ix]['error'] = $e->getMessage();
         }
+
+        $strReset = "RSET\r\n";
+        $this->say( $strReset, array(250));
 
     }
 
@@ -143,6 +193,12 @@ private function msg2String($msg){
     $msg['Content-Type'] = ($msg['Content-Type'] ? $msg['Content-Type'] : 'text/plain')
         .($msg['charset'] ? "; charset=".$msg['charset'] : '');
     
+    // escaped vars replacements
+    $msg['Subject'] = self::doReplacements($msg['Subject'], $msg);        
+    $msg['Head'] = self::doReplacements($msg['Head'], $msg);        
+    $msg['Text'] = self::doReplacements($msg['Text'], $msg);        
+    $msg['Bottom'] = self::doReplacements($msg['Bottom'], $msg);        
+
     $strMessage = '';
     if(is_array($msg['Attachments']))
         foreach ($msg['Attachments'] as $att){
@@ -168,7 +224,9 @@ private function msg2String($msg){
             ."--".self::$Boundary."\r\nContent-Type: ".$msg["Content-Type"]."\r\n"
             ."Content-Transfer-Encoding: 8bit\r\n"
             ."Content-Disposition: inline;\r\n\r\n"
+            .($msg['Head'] ? $msg['Head']."\r\n\r\n" : '')
             .$msg['Text']."\r\n\r\n"
+            .($msg['Bottom'] ? $msg['Bottom']."\r\n\r\n" : '')
             .$strMessage
             //."----".self::$Boundary."--\r\n"
             ;
@@ -176,7 +234,9 @@ private function msg2String($msg){
     } else { // if there're no attachments
         $strMessage = 
             "Content-Type: ".$msg["Content-Type"]."\r\n\r\n"
-            .$msg['Text']."\r\n\r\n";
+            .($msg['Head'] ? $msg['Head']."\r\n\r\n" : '')
+            .$msg['Text']."\r\n\r\n"
+            .($msg['Bottom'] ? $msg['Bottom']."\r\n\r\n" : '');
            
     }
     
@@ -243,6 +303,10 @@ private function isItOk($rcv, $arrExpectedReplyCode){
 
 }
 
+/* 
+checks email for compliance to "Name Surname" <mailbox@host.domain> format
+in case of incompliance adds angular brackets (<>) to mail address and returns it 
+*/
 static function checkAddressFormat($addr){
     if(!preg_match('/^(.+)\<([^\s\<]+\@[^\s\<]+)\>$/', $addr)){
         $addr = preg_replace('/(([^\<\s\@])+\@([^\s\<])+)/', "<\\1>", $addr);
@@ -250,9 +314,24 @@ static function checkAddressFormat($addr){
     return $addr;
 }
 
+/*
+replaces escaped statements (e.g. ##Sender## or ##orderHref##) in $text
+with values from $arrReplacements array (e.g 'Sender' => 'John Doe', 'orderHref' => 'http://mysite.com/orders/12345')
+*/
+static function doReplacements($text, $arrReplacements){
+    foreach($arrReplacements as $key=>$value){
+        if(is_object($value) || is_array($value))
+            continue;
+        $text = str_replace(self::keyEscapePrefix.$key.self::keyEscapeSuffix, $value, $text);
+    }
+    return $text;
 }
 
-// this kind of Expetion should allow us to keep messages array in its actual state
+}
+
+/*
+This extension of Exception class should allow us to pass back messages array in its actual state
+*/
 class eiseMailException extends Exception {
 
 function __construct($usrMsg, $arrMessages=array()){
@@ -260,7 +339,10 @@ function __construct($usrMsg, $arrMessages=array()){
     $this->arrMessages = $arrMessages;
 }
 
-function getMessages(){ // this function shoulbe used in 'catch' block after eiseMail::send() activation to obtain eiseMail::arrMessages array
+/* 
+This function should be used in 'catch' block after eiseMail::send() activation to obtain eiseMail::arrMessages array in its actual state
+*/
+function getMessages(){ 
     return $this->arrMessages;
 }
 

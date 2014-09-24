@@ -10,9 +10,9 @@ $sender  = new eiseMail(array(
 			'subjPrefix'=>'[eiseMail demo]'
 			, 'host' => "smtp.gmail.com"
             , 'port' => 587 //465
-            , 'login' => 'easyise@gmail.com'
-            , 'password' => 'LetItBe1971'
-			, 'debug' => false // if set to TRUE send() method outputs all negotiations to std output as plain text
+            , 'login' => 'youraccount@yoursmtpserver.com'
+            , 'password' => 'yourpassword'
+			, 'debug' => true // if set to TRUE send() method outputs all negotiations to std output as plain text
 			, 'tls' => true // if TRUE, then TLS encryption applied
 ));
 
@@ -42,6 +42,8 @@ $msg = array('mail_from'=> '"Ilya Eliseev" <easyise@gmail.com>'
 	            	, 'content'=>"Hello\r\nfrom the text file again"
 	            	, 'Content-Type'=>'text/plain')
             	)
+            , 'Bottom' => '##bottom_to_be_added##'
+            , 'bottom_to_be_added' => "\r\n\r\nThis is the bottom!"
             );
 $sender->addMessage($msg);
 
