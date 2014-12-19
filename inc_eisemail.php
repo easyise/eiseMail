@@ -17,6 +17,7 @@ eiseMail class
     -   Microsoft Exchange
     -   Google mail
     -   Microsoft Office365
+    -   Yandex mail
     
     Actual example can be found in eiseMail_demo.php script attached to this package.
     
@@ -43,6 +44,7 @@ const keyEscapePrefix = '##';
 const keyEscapeSuffix = '##';
 
 function __construct($arrConfig){
+    
     $arrDefaultConfig = Array(
 
           "Content-Type" => "text/plain" // message body content type
@@ -55,44 +57,71 @@ function __construct($arrConfig){
           , "localhost" => "localhost" // defines how to introduce yourself to SMTP server with HELO/EHLO SMTP command
           
           , 'Subject' => '' // default subject for message queue 
+            , 'flagEscapeSubject' => true
           , 'Head' => '' // default message body head
           , 'Bottom' => '' // default message bottom 
 
-          , 'debug' => true // when set to TRUE class methods are sending actual conversation data to standard output, mail is actually sent to 'rcpt_to_debug' address
-          , 'mail_from_debug' => 'developer@e-ise.com' // MAIL FROM: to be used when debug is TRUE
-          , 'rcpt_to_debug' => 'mailbox_for_test_messages@e-ise.com' // RCPT TO: to be used when debug is TRUE
+          , 'verbose' => false // when set to TRUE class methods are sending actual conversation data to standard output
+          , 'debug' => false // when set to TRUE mail is actually sent to 'rcpt_to_debug' address + verbose
+          //, 'mail_from_debug' => 'developer@e-ise.com' // MAIL FROM: to be used when debug is TRUE
+          //, 'rcpt_to_debug' => 'mailbox_for_test_messages@e-ise.com' // RCPT TO: to be used when debug is TRUE
 
           );
     
     $this->conf = array_merge($arrDefaultConfig, $arrConfig);
     
-    $this->debug = $this->conf['debug'];
-    
 }
 
 
-function addMessage ($arrMsg){
+function addMessage ($msg){
 
     $msgDefault = array(
-        'mail_from' => $this->conf['mail_from']
-        , 'rcpt_to' => $this->conf['rcpt_to']
+        'From' => $this->conf['From']
+        , 'mail_from' => $this->conf['mail_from'] // service field, argument to MAIL FROM command
+        , 'rcpt_to' => $this->conf['rcpt_to'] // service field, argument to RCPT TO command, could be array
         , 'Content-Type' => $this->conf['Content-Type']
         , 'charset' => $this->conf['charset']
+        , 'To' => $this->conf['To']
+        , 'Reply-To' => $this->conf['Reply-To']
         , 'CC' => null
         , 'BCC' => null
           , 'Subject' => $this->conf['Subject']
+            , 'flagEscapeSubject' => $this->conf['flagEscapeSubject']
           , 'Head' => $this->conf['Head']
           , 'Text' => ''
           , 'Bottom' => $this->conf['Bottom']
         , 'Attachments' => array()
     );
 
-    $arrMsg = array_merge($msgDefault, $arrMsg);
+    $msg = array_merge($msgDefault, $msg);
 
-    if ($arrMsg['subjPrefix'])
-        $arrMsg['Subject'] = $arrMsg['subjPrefix'].($arrMsg['Subject'] ? ' '.$arrMsg['Subject'] : '');
+    if ($msg['subjPrefix'])
+        $msg['Subject'] = $msg['subjPrefix'].($msg['Subject'] ? ' '.$msg['Subject'] : '');
 
-    $this->arrMessages[] = $arrMsg;
+    $msg['From'] = ($msg['From'] ? $msg['From'] : $msg['mail_from']); // if no From, we use mail_from
+    $msg['mail_from'] = ($msg['mail_from'] ? $msg['mail_from'] : $msg['From']); // vice-versa
+
+    $msg['mail_from'] = self::getClearAddress( self::clearAddressFormat($msg['mail_from']) ); // prepare mail_from to be told to the SMTP server
+
+    if(!$msg['rcpt_to']){
+        $msg['rcpt_to'] = array_merge(
+            (isset($msg['To']) ? self::explodeAddresses($msg['To']) : array())
+            , (isset($msg['CC']) ? self::explodeAddresses($msg['CC']) : array())
+            , (isset($msg['BCC']) ? self::explodeAddresses($msg['BCC']) : array())
+            );
+    }
+
+    if(!is_array($msg['rcpt_to'])){
+        $msg['rcpt_to'] = array($msg['rcpt_to']);
+    }
+
+    foreach($msg['rcpt_to'] as &$rcpt){
+        $rcpt = self::getClearAddress( self::clearAddressFormat( $rcpt ) );
+    }
+    
+    $msg['rcpt_to'] = array_unique($msg['rcpt_to']);
+    
+    $this->arrMessages[] = $msg;
 
 }
 
@@ -134,9 +163,9 @@ function send($arrMsg=null){
 
     foreach($this->arrMessages as $ix=>$msg){
 
-        if($this->debug){
+        if($this->conf['debug']){
             $msg['mail_from'] = ($this->conf['mail_from_debug'] ? $this->conf['mail_from_debug'] : $msg['mail_from']);
-            $msg['rcpt_to'] = ($this->conf['rcpt_to_debug'] ? $this->conf['rcpt_to_debug'] : $msg['rcpt_to']);
+            $msg['rcpt_to'] = array( ($this->conf['rcpt_to_debug'] ? $this->conf['rcpt_to_debug'] : $msg['rcpt_to']) );
         }
 
         if (!$msg['mail_from']){
@@ -148,20 +177,20 @@ function send($arrMsg=null){
 
         $strMessage = $this->msg2String($msg);        
 
-        if ($this->debug){
+        if ($this->conf['debug']){
             echo $strMessage;
         }
 
-        $msg['mail_from'] = self::checkAddressFormat($msg['mail_from']);
-        $msg['rcpt_to'] = self::checkAddressFormat($msg['rcpt_to']);
 
         try {
             $size_msg=strlen($strMessage); 
-            $strMailFrom = "MAIL FROM:".preg_replace("/^(.+)(\<)/", "\\2", $msg['mail_from'])." SIZE={$size_msg}\r\n";
+            $strMailFrom = "MAIL FROM:".$msg['mail_from']." SIZE={$size_msg}\r\n";
             $this->say( $strMailFrom, array(250) );
 
-            $strRcptTo = "RCPT TO:".preg_replace("/^(.+)(\<)/", "\\2", $msg['rcpt_to'])."\r\n";
-            $this->say($strRcptTo, array(250));
+            foreach($msg['rcpt_to'] as $rcpt){
+                $strRcptTo = "RCPT TO:".$rcpt."\r\n";
+                $this->say($strRcptTo, array(250));
+            }
             
             $this->say( "DATA\r\n", array(354));
             
@@ -197,7 +226,11 @@ private function msg2String($msg){
     $msg['Subject'] = self::doReplacements($msg['Subject'], $msg);        
     $msg['Head'] = self::doReplacements($msg['Head'], $msg);        
     $msg['Text'] = self::doReplacements($msg['Text'], $msg);        
-    $msg['Bottom'] = self::doReplacements($msg['Bottom'], $msg);        
+    $msg['Bottom'] = self::doReplacements($msg['Bottom'], $msg);     
+
+    if($msg['charset'] && $msg['flagEscapeSubject']){
+        $msg['Subject'] = "=?{$msg['charset']}?B?".base64_encode($msg['Subject'])."?=";
+    }   
 
     $strMessage = '';
     if(is_array($msg['Attachments']))
@@ -240,10 +273,11 @@ private function msg2String($msg){
            
     }
     
+    $msg['rcpt_to_string'] = is_array($msg['rcpt_to'] ? implode(', ', $msg['rcpt_to']) : $msg['rcpt_to']);
     
     $strMessage = "Subject: ".$msg['Subject']."\r\n"
         ."From: ".($msg['From'] ? $msg['From'] : $msg['mail_from'])."\r\n"
-        ."To: ".$msg['rcpt_to']."\r\n"
+        ."To: ".($msg['To'] ? $msg['To'] : $msg['rcpt_to_string'])."\r\n"
         .($msg["CC"] ? "CC: {$msg["CC"]}\r\n" : "")
         .($msg["Bcc"] ? "Bcc: {$msg["Bcc"]}\r\n" : "")
         ."X-Sender: ".$msg['mail_from']."\r\n"
@@ -257,7 +291,7 @@ private function msg2String($msg){
                 : ($msg["Reply-To"]!=""
                     ? $msg["Reply-To"]
                     : $msg['mail_from']))."\r\n"
-        ."Reply-To: ".($msg["Reply-To"]!="" ? $msg["Reply-To"] : $msg['mail_from'])."\r\n"
+        .($msg["Reply-To"]!="" ? 'Reply-To: '.$msg["Reply-To"]."\r\n" : '')
         ."X-Mailer: PHP\r\nX-Priority: 3\r\nX-Priority: 3\r\nMIME-Version: 1.0\r\n"
         .$strMessage;
 
@@ -266,7 +300,7 @@ private function msg2String($msg){
 }
 
 private function say($words, $arrExpectedReplyCode=array()){
-    if ($this->debug){
+    if ($this->conf['verbose'] || $this->conf['debug']){
         echo $words;ob_flush();
     }
     fputs($this->connect, $words);
@@ -280,9 +314,10 @@ private function listen($arrExpectedReplyCode=array()){
         $data .= $str;
         if(substr($str,3,1) == " ") { break; }
     }
-    if ($this->debug)
+    if ($this->conf['verbose'] || $this->conf['debug']){
         echo "> {$data}"; ob_flush();
-    
+    }
+
     $this->isItOk($data, $arrExpectedReplyCode);
 
     return $data;
@@ -307,11 +342,43 @@ private function isItOk($rcv, $arrExpectedReplyCode){
 checks email for compliance to "Name Surname" <mailbox@host.domain> format
 in case of incompliance adds angular brackets (<>) to mail address and returns it 
 */
-static function checkAddressFormat($addr){
+static function clearAddressFormat($addr){
     if(!preg_match('/^(.+)\<([^\s\<]+\@[^\s\<]+)\>$/', $addr)){
         $addr = preg_replace('/(([^\<\s\@])+\@([^\s\<])+)/', "<\\1>", $addr);
     }
     return $addr;
+}
+
+/*
+gets clear address from RFC2822 mail address string:
+ "John Doe" <john@doe.com> -> <john@doe.com>
+ or, with $flagRemoveAngularBrackets:
+ "John Doe" <john@doe.com> -> john@doe.com
+*/
+static function getClearAddress($addr, $flagRemoveAngularBrackets = false){
+    
+    $addr = preg_replace("/^(.+)(\<)/", "\\2", $addr );
+    
+    if($flagRemoveAngularBrackets)
+       $addr = preg_replace('/^\<(.+)\>$/', "\\1", $addr);
+
+    return $addr;
+
+}
+
+
+/*
+explodes address list according to RFC2822: 
+"Name Surname" <mailbox@host.domain>, "Surname, Name" <mailbox1@host.domain>
+etc
+*/
+static function explodeAddresses($addrList){
+
+    if(preg_match_all('/((\"[^\"]+\")\s+){0,1}([^\s]+\@[^\s\,]+)/', $addrList, $arrMatch))
+        return $arrMatch[0];
+    else 
+        return array($addrList);
+
 }
 
 /*
