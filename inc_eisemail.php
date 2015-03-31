@@ -42,14 +42,19 @@
  */
 class eiseMail_base {
 
+const keyEscapePrefix = '##';
+const keyEscapeSuffix = '##';
+
 /**
  * This function echoes if 'verbose' configuration flag is on
  *
  * @param string $string - string to echo.
+ *
+ * @return void
  */
 protected function v($string){
     if($this->conf['verbose']){
-        echo ($this->conf['verbose']=='htmlspecialchars' ? '<br>'.htmlspecialchars(Date('Y-m-d H:i:s').': '.$string) : Date('Y-m-d H:i:s').': '.$string);
+        echo ($this->conf['verbose']=='htmlspecialchars' ? '<br>'.htmlspecialchars(Date('Y-m-d H:i:s').': '.$string) : "\r\n".Date('Y-m-d H:i:s').': '.$string);
         ob_flush();
         flush();
     }
@@ -59,9 +64,12 @@ protected function v($string){
 /**
  * Explodes address list according to RFC2822: 
  * "Name Surname" <mailbox@host.domain>, "Surname, Name" <mailbox1@host.domain>
- * etc
+ * etc to array. Ordinary explode() will not work, because comma (",") can be a part of personal information.
+ * E.g. "John Smith, Mr" <john.smith@domain.com>
  * 
  * @param string $addrList Address list
+ *
+ * @return array of strings with addresses
  * 
  */
 static function explodeAddresses($addrList, $defaultDomain = ''){
@@ -70,7 +78,7 @@ static function explodeAddresses($addrList, $defaultDomain = ''){
     $arrRet = array();
 
     foreach($arr as $o){
-        $arrRet[] = ($o->personal ? '"'.$o->personal.'" ' : '').$o->mailbox.'@'.$o->host;
+        $arrRet[] = ($o->personal ? '"'.$o->personal.'" ' : '').'<'.$o->mailbox.'@'.$o->host.'>';
     }
     return $arrRet;
 
@@ -82,6 +90,8 @@ static function explodeAddresses($addrList, $defaultDomain = ''){
  * etc
  * 
  * @param string $addrList Address list
+ *
+ * @return array of strings with addresses w/o personal info
  * 
  */
 static function getAddresses($addrList, $defaultDomain = ''){
@@ -98,6 +108,47 @@ static function getAddresses($addrList, $defaultDomain = ''){
 
 }
 
+/**
+ * Gets RFC-compliant mail address to be used with 'MAIL FROM:' and 'RCPT TO:' SMPT commands
+ * 
+ * @param string $addr - mail address list
+ *
+ * @return false if $addr contains something wrong. Otherwise removes personal information from the address and returns address like '<mailbox@domain.com>'
+ */
+static function prepareAddressRFC( $addr, $defaultDomain=''){
+
+    $oAddrs = imap_rfc822_parse_adrlist($addr, $defaultDomain);
+
+    if(!$oAddrs)
+        return false;
+
+    $oAddr = $oAddrs[0];
+
+    $addr = '<'.$oAddr->mailbox.($oAddr->host ? '@'.$oAddr->host : '').'>';
+
+    return $addr;
+
+}
+
+
+/**
+ * replaces escaped statements (e.g. ##Sender## or ##orderHref##) in $text
+ * with values from $arrReplacements array (e.g 'Sender' => 'John Doe', 'orderHref' => 'http://mysite.com/orders/12345')
+ *
+ * @param string $text original text
+ * @param array $arrReplacements is an associative array of keys and replacements. Each occurence of ##$key## will be replaced with corresponding value.
+ *
+ * @return string corrected text
+ */
+static function doReplacements($text, $arrReplacements){
+    foreach($arrReplacements as $key=>$value){
+        if(is_object($value) || is_array($value))
+            continue;
+        $text = str_replace(self::keyEscapePrefix.$key.self::keyEscapeSuffix, $value, $text);
+    }
+    return $text;
+}
+
 }
 
 /**
@@ -108,35 +159,32 @@ class eiseSMTP extends eiseMail_base{
 
 public $arrMessages = array();
 static $Boundary = "==Multipart_Boundary_eiseMail";
-const keyEscapePrefix = '##';
-const keyEscapeSuffix = '##';
+
+public static $arrDefaultConfig = Array(
+
+      "Content-Type" => "text/plain" // message body content type
+      , 'charset' => "utf-8" // message body charset
+      , "host" => "localhost" // SMTP server host name / IP address
+      , "port" => "25" // SMTP server port
+      , 'tls' => false // flag use TLS channel encryption
+      , "login" => ""  // SMPT server login
+      , "password" => "" // SMPT server password
+      , "localhost" => "localhost" // defines how to introduce yourself to SMTP server with HELO/EHLO SMTP command
+      
+      , 'Subject' => '' // default subject for message queue 
+      , 'Head' => '' // default message body head
+      , 'Bottom' => '' // default message bottom 
+
+      , 'verbose' => false // when set to TRUE class methods are sending actual conversation data to standard output
+      , 'debug' => false // when set to TRUE mail is actually sent to 'rcpt_to_debug' address + verbose
+      //, 'mail_from_debug' => 'developer@e-ise.com' // MAIL FROM: to be used when debug is TRUE
+      //, 'rcpt_to_debug' => 'mailbox_for_test_messages@e-ise.com' // RCPT TO: to be used when debug is TRUE
+
+  );
 
 function __construct($arrConfig){
     
-    $arrDefaultConfig = Array(
-
-          "Content-Type" => "text/plain" // message body content type
-          , 'charset' => "utf-8" // message body charset
-          , "host" => "localhost" // SMTP server host name / IP address
-          , "port" => "25" // SMTP server port
-          , 'tls' => false // flag use TLS channel encryption
-          , "login" => ""  // SMPT server login
-          , "password" => "" // SMPT server password
-          , "localhost" => "localhost" // defines how to introduce yourself to SMTP server with HELO/EHLO SMTP command
-          
-          , 'Subject' => '' // default subject for message queue 
-            , 'flagEscapeSubject' => true
-          , 'Head' => '' // default message body head
-          , 'Bottom' => '' // default message bottom 
-
-          , 'verbose' => false // when set to TRUE class methods are sending actual conversation data to standard output
-          , 'debug' => false // when set to TRUE mail is actually sent to 'rcpt_to_debug' address + verbose
-          //, 'mail_from_debug' => 'developer@e-ise.com' // MAIL FROM: to be used when debug is TRUE
-          //, 'rcpt_to_debug' => 'mailbox_for_test_messages@e-ise.com' // RCPT TO: to be used when debug is TRUE
-
-          );
-    
-    $this->conf = array_merge($arrDefaultConfig, $arrConfig);
+    $this->conf = array_merge(self::$arrDefaultConfig, $arrConfig);
     
 }
 
@@ -169,7 +217,7 @@ function addMessage ($msg){
     $msg['From'] = ($msg['From'] ? $msg['From'] : $msg['mail_from']); // if no From, we use mail_from
     $msg['mail_from'] = ($msg['mail_from'] ? $msg['mail_from'] : $msg['From']); // vice-versa
 
-    $msg['mail_from'] = self::getClearAddress( self::clearAddressFormat($msg['mail_from']) ); // prepare mail_from to be told to the SMTP server
+    $msg['mail_from'] = self::prepareAddressRFC($msg['mail_from'], $this->conf['localhost']); // prepare mail_from to be told to the SMTP server
 
     if(!$msg['rcpt_to']){
         $msg['rcpt_to'] = array_merge(
@@ -184,7 +232,7 @@ function addMessage ($msg){
     }
 
     foreach($msg['rcpt_to'] as &$rcpt){
-        $rcpt = self::getClearAddress( self::clearAddressFormat( $rcpt ) );
+        $rcpt = self::prepareAddressRFC( $rcpt ) ;
     }
     
     $msg['rcpt_to'] = array_unique($msg['rcpt_to']);
@@ -206,6 +254,8 @@ function send($arrMsg=null){
     $this->connect = fsockopen ($this->conf["host"], $this->conf["port"], $errno, $errstr, 30);
 
     if (!$this->connect) throw new Exception("Cannot connect to mail server ".$this->conf["host"].':'.$this->conf["port"]);
+
+    $this->v('SMTP session started');
 
     $this->listen();
     
@@ -237,9 +287,11 @@ function send($arrMsg=null){
         }
 
         if (!$msg['mail_from']){
+            $this->v('MAIL FROM is not set for the message '.var_export($msg, true));
             $this->arrMessages[$ix]['error'] = 'MAIL FROM is not set for the message'; continue;
         }
         if (!$msg['rcpt_to']){
+            $this->v('RCPT TO is not set for the message '.var_export($msg, true));
             $this->arrMessages[$ix]['error'] = 'RCPT TO is not set for the message'; continue;
         }
 
@@ -279,10 +331,19 @@ function send($arrMsg=null){
     
     fclose($this->connect);
 
+    $this->v('SMTP session complete');
+
     return $this->arrMessages;
 
 }
 
+/**
+ * This function prepares message for sending: it converts it to string with headers and message parts
+ *
+ * @param array $msg message array
+ *  
+ * @return string Ready-to-send message data after SMTP DATA command.
+ */
 private function msg2String($msg){
 
     $conf = $this->conf;
@@ -367,30 +428,49 @@ private function msg2String($msg){
 
 }
 
+/**
+ * This function transmits data to SMTP server
+ *
+ * @param string $words - data to transmit
+ * @param array $arrExpectedReplyCode - array of expected reply codes from the server.
+ * 
+ * @return void
+ */
 private function say($words, $arrExpectedReplyCode=array()){
-    if ($this->conf['verbose'] || $this->conf['debug']){
-        echo $words;ob_flush();
-    }
+    $this->v($words);
     fputs($this->connect, $words);
     $this->lastTransmission = $words;
     $this->listen($arrExpectedReplyCode);
 }
 
+/**
+ * This function listens for reply from SMTP server
+ *
+ * @param array $arrExpectedReplyCode - array of expected reply codes from the server.
+ * 
+ * @return string $data - string with SMTP reply to last transmission
+ */
 private function listen($arrExpectedReplyCode=array()){
     $data="";
     while($str = fgets($this->connect,515)){
         $data .= $str;
         if(substr($str,3,1) == " ") { break; }
     }
-    if ($this->conf['verbose'] || $this->conf['debug']){
-        echo "> {$data}"; ob_flush();
-    }
+    $this->v("> {$data}");
 
     $this->isItOk($data, $arrExpectedReplyCode);
 
     return $data;
 }
 
+/**
+ * This function analyze reply from SMTP server and, in case of unexpected reply, it throws the exception
+ *
+ * @param string $rcv - server reply
+ * @param array $arrExpectedReplyCode - array of expected reply codes from the server.
+ * 
+ * @return void
+ */
 private function isItOk($rcv, $arrExpectedReplyCode){
 
     if(count($arrExpectedReplyCode)==0){
@@ -406,46 +486,6 @@ private function isItOk($rcv, $arrExpectedReplyCode){
 
 }
 
-/* 
-checks email for compliance to "Name Surname" <mailbox@host.domain> format
-in case of incompliance adds angular brackets (<>) to mail address and returns it 
-*/
-static function clearAddressFormat($addr){
-    if(!preg_match('/^(.+)\<([^\s\<]+\@[^\s\<]+)\>$/', $addr)){
-        $addr = preg_replace('/(([^\<\s\@])+\@([^\s\<])+)/', "<\\1>", $addr);
-    }
-    return $addr;
-}
-
-/*
-gets clear address from RFC2822 mail address string:
- "John Doe" <john@doe.com> -> <john@doe.com>
- or, with $flagRemoveAngularBrackets:
- "John Doe" <john@doe.com> -> john@doe.com
-*/
-static function getClearAddress($addr, $flagRemoveAngularBrackets = false){
-    
-    $addr = preg_replace("/^(.+)(\<)/", "\\2", $addr );
-    
-    if($flagRemoveAngularBrackets)
-       $addr = preg_replace('/^\<(.+)\>$/', "\\1", $addr);
-
-    return $addr;
-
-}
-
-/*
-replaces escaped statements (e.g. ##Sender## or ##orderHref##) in $text
-with values from $arrReplacements array (e.g 'Sender' => 'John Doe', 'orderHref' => 'http://mysite.com/orders/12345')
-*/
-static function doReplacements($text, $arrReplacements){
-    foreach($arrReplacements as $key=>$value){
-        if(is_object($value) || is_array($value))
-            continue;
-        $text = str_replace(self::keyEscapePrefix.$key.self::keyEscapeSuffix, $value, $text);
-    }
-    return $text;
-}
 
 }
 
@@ -530,6 +570,7 @@ public function receive(){
 
     $arrMessages = array();
 
+    $this->v('IMAP Session started');
 
     if(!$this->conf['host'] 
      || !$this->conf['login'] 
@@ -666,6 +707,8 @@ public function receive(){
      
     /** close the connection */
     imap_close($this->inbox);
+
+    $this->v('IMAP Session complete');
     
     return ($arrMessages);
 
