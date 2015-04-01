@@ -602,19 +602,29 @@ public function receive(){
             , true)
         );
 
-    $this->inbox = @imap_open($host
-        , $this->conf['login']
-        , $this->conf['password']
-        , $this->conf['imap_open_options']
-        , ($this->conf['imap_open_n_retries'] ? $this->conf['imap_open_n_retries'] :  self::$arrDefaultConfig['imap_open_n_retries'])
-        , (!empty($this->conf['imap_open_params']) ? $this->conf['imap_open_params'] :  self::$arrDefaultConfig['imap_open_params'])
-        );
+    if (version_compare(PHP_VERSION, '5.3.2', '<')){ // if PHP version is lower than 5.3.2, we omit parameter 6
+        $this->inbox = @imap_open($host
+            , $this->conf['login']
+            , $this->conf['password']
+            , $this->conf['imap_open_options']
+            , ($this->conf['imap_open_n_retries'] ? $this->conf['imap_open_n_retries'] :  self::$arrDefaultConfig['imap_open_n_retries'])
+            );
+    } else {
+        $this->inbox = @imap_open($host
+            , $this->conf['login']
+            , $this->conf['password']
+            , $this->conf['imap_open_options']
+            , ($this->conf['imap_open_n_retries'] ? $this->conf['imap_open_n_retries'] :  self::$arrDefaultConfig['imap_open_n_retries'])
+            , (!empty($this->conf['imap_open_params']) ? $this->conf['imap_open_params'] :  self::$arrDefaultConfig['imap_open_params'])
+            );
+    }
+    
 
     if(!$this->inbox) {
         
         $errMsg = "Cannot connect to server {$host}, IMAP says: ". imap_last_error();
         $e = imap_errors();
-        $this->v('ERROR: '.$errMsg."\r\nAll IMAP errors:\r\n".var_export($e));
+        $this->v('ERROR: '.$errMsg."\r\nAll IMAP errors:\r\n".var_export($e, true));
         
         throw new eiseMailException($errMsg);
 
