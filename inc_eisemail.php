@@ -661,10 +661,14 @@ public function receive(){
             }
 
             /** Get information specific to this email */
-            $overview = imap_fetch_overview($this->inbox,$email_number);
-
+            //$overview = imap_fetch_overview($this->inbox,$email_number);
+            $overview = imap_rfc822_parse_headers(imap_fetchheader($this->inbox,$email_number));
+            
             /** Convert headers to utf8 */
-            $ovrv = $this->mailOverviewUTF8($overview[0]);
+            $ovrv = $this->mailOverviewUTF8($overview);
+
+            $ovrv->msgno = $email_number;
+
             
              /** Run check of mail overview, if it returns false, we go to next message */
             if (!$this->checkMailOverview($ovrv))
@@ -829,8 +833,11 @@ private function fetch_file($part, $partID){
  */
 public function mailOverviewUTF8($overview){
 
-    $overview->to_utf8 = iconv_mime_decode($overview->to, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
-    $overview->from_utf8 = iconv_mime_decode($overview->from, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+    $overview->to_utf8 = iconv_mime_decode($overview->toaddress, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+    $overview->from_utf8 = iconv_mime_decode($overview->fromaddress, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+    $overview->cc_utf8 = iconv_mime_decode($overview->ccaddress, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+    $overview->reply_to_utf8 = iconv_mime_decode($overview->reply_toaddress, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+    $overview->sender_utf8 = iconv_mime_decode($overview->senderaddress, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
     $overview->subject_utf8 = iconv_mime_decode($overview->subject, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
 
     return $overview;
