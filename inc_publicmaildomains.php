@@ -264,6 +264,7 @@ $arrPublicEmailDomains = array (
 , 'bitmail.com'
 , 'bitpage.net'
 , 'bizhosting.com'
+, 'bk.ru'
 , 'bla-bla.com'
 , 'blackburnmail.com'
 , 'blackplanet.com'
