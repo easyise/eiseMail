@@ -146,6 +146,8 @@ static function doReplacements($text, $arrReplacements){
             continue;
         $text = str_replace(self::keyEscapePrefix.$key.self::keyEscapeSuffix, $value, $text);
     }
+    $text = preg_replace('/('.preg_quote(self::keyEscapePrefix, '/').'\S+'.preg_quote(self::keyEscapeSuffix).')/i', '', $text);
+
     return $text;
 }
 
@@ -210,6 +212,16 @@ function addMessage ($msg){
     );
 
     $msg = array_merge($msgDefault, $msg);
+
+    if($this->conf['login']){
+        $arr = (array)imap_rfc822_parse_adrlist($msg['mail_from'], '');
+        $from = $arr[0];
+
+        if($from->mailbox.'@'.$from->host!=$this->conf['login']){
+            $msg['Reply-To'] = $msg['mail_from'];
+            $msg['mail_from'] = $this->conf['login'];
+        }
+    }
 
     if ($msg['subjPrefix'])
         $msg['Subject'] = $msg['subjPrefix'].($msg['Subject'] ? ' '.$msg['Subject'] : '');
