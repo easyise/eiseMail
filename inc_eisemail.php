@@ -44,6 +44,7 @@ class eiseMail_base {
 
 const keyEscapePrefix = '##';
 const keyEscapeSuffix = '##';
+const passSymbolsToShow = 3;
 
 /**
  * This function echoes if 'verbose' configuration flag is on
@@ -54,12 +55,18 @@ const keyEscapeSuffix = '##';
  */
 protected function v($string){
     if($this->conf['verbose']){
-        echo ($this->conf['verbose']=='htmlspecialchars' ? '<br>'.htmlspecialchars(Date('Y-m-d H:i:s').': '.$string) : "\r\n".Date('Y-m-d H:i:s').': '.$string);
+        echo ($this->conf['verbose']==='htmlspecialchars' ? '<br>'.htmlspecialchars(Date('Y-m-d H:i:s').': '.$string) : "\r\n".Date('Y-m-d H:i:s').': '.trim($string));
         ob_flush();
         flush();
     }
 }
 
+public function coverPassword(){
+
+    $nSymsToShow = min(strlen($this->conf['password']), self::passSymbolsToShow);
+    $this->conf['passCovered'] = substr($this->conf['password'], 0, $nSymsToShow).str_repeat("*",strlen($this->conf['password'])-$nSymsToShow);
+    
+}
 
 /**
  * Explodes address list according to RFC2822: 
@@ -177,6 +184,11 @@ public static $arrDefaultConfig = Array(
       , 'Head' => '' // default message body head
       , 'Bottom' => '' // default message bottom 
 
+      , 'flagAddToSentItems' => false // set to true if you need a copy of message to be saved in user Sent Items
+      , 'imap_host' => '' // IMAP host address
+      , 'imap_login' => '' // (optional) IMAP login. By default it is set by 'login' field. Specify only if it differs from it.
+      , 'imap_password' => '' // (optional) IMAP password.
+
       , 'verbose' => false // when set to TRUE class methods are sending actual conversation data to standard output
       , 'debug' => false // when set to TRUE mail is actually sent to 'rcpt_to_debug' address + verbose
       //, 'mail_from_debug' => 'developer@e-ise.com' // MAIL FROM: to be used when debug is TRUE
@@ -187,7 +199,7 @@ public static $arrDefaultConfig = Array(
 function __construct($arrConfig){
     
     $this->conf = array_merge(self::$arrDefaultConfig, $arrConfig);
-    
+    $this->coverPassword();
 }
 
 
@@ -248,7 +260,7 @@ function addMessage ($msg){
     }
     
     $msg['rcpt_to'] = array_unique($msg['rcpt_to']);
-    
+
     $this->arrMessages[] = $msg;
 
 }
@@ -313,6 +325,17 @@ function send($arrMsg=null){
             echo $strMessage;
         }
 
+        if($this->conf['flagAddToSentItems'] && $this->conf['imap_host']){
+            $imap = new eiseIMAP(array(
+                        'host' => $this->conf['imap_host']
+                        , 'login' => $this->conf['imap_login'] ? $this->conf['imap_login'] : $this->conf['login'] 
+                        , 'password' => $this->conf['imap_password'] ? $this->conf['imap_password'] : $this->conf['password']
+                        , 'verbose' => $this->conf['verbose']
+                        , 'mailbox_name' => 'Sent Items'
+                        ));
+
+            $imap->connect();
+        }
 
         try {
             $size_msg=strlen($strMessage); 
@@ -329,6 +352,13 @@ function send($arrMsg=null){
             $this->say( $strMessage."\r\n.\r\n", array(250));
             
             $this->arrMessages[$ix]['send_time'] = mktime();
+
+            if($this->conf['flagAddToSentItems'] && $this->conf['imap_host']){
+
+                $imap->save($strMessage);
+
+            }
+
         } catch(eiseMailException $e){
             $this->arrMessages[$ix]['error'] = $e->getMessage();
         }
@@ -551,12 +581,80 @@ public static $arrDefaultConfig = Array(
  *      Mandatory. Configuration array.
  *      
  * }
- * @see eiseImap::$srrDefaultConfig
+ * @see eiseImap::$strDefaultConfig
  */
 function __construct($arrConfig){
     
     $this->conf = array_merge(self::$arrDefaultConfig, $arrConfig);
+
+    $this->coverPassword();
     
+}
+
+public function connect(){
+
+    $this->v('Starting IMAP Session...');
+
+    if(!$this->conf['host'] 
+     || !$this->conf['login'] 
+     || !$this->conf['password'] 
+     ) 
+        throw new eiseMailException('Host/credentials are not specified.');
+
+
+    $this->conn_str = '{'
+        .$this->conf['host']
+        .($this->conf['port'] ? ':'.$this->conf['port'] : '')
+        .($this->conf['flags'] 
+            ? (strpos($this->conf['flags'], '/')===0 ? '' : '/').$this->conf['flags']
+            : '')
+        .'}'
+        .($this->conf['mailbox_name'] ? $this->conf['mailbox_name'] : '');
+
+
+    /** try to connect */
+    $this->v("Trying to connect to server with the following params:\r\n".
+        var_export(array(
+                    $this->conn_str
+                    , $this->conf['login']
+                    , $this->conf['passCovered']
+                    , $this->conf['imap_open_options']
+                    , ($this->conf['imap_open_n_retries'] ? $this->conf['imap_open_n_retries'] :  self::$arrDefaultConfig['imap_open_n_retries'])
+                    , (!empty($this->conf['imap_open_params']) ? $this->conf['imap_open_params'] :  self::$arrDefaultConfig['imap_open_params'])
+                )
+            , true)
+        );
+
+    if (version_compare(PHP_VERSION, '5.3.2', '<')){ // if PHP version is lower than 5.3.2, we omit parameter 6
+        $this->mailbox = @imap_open($this->conn_str
+            , $this->conf['login']
+            , $this->conf['password']
+            , $this->conf['imap_open_options']
+            , ($this->conf['imap_open_n_retries'] ? $this->conf['imap_open_n_retries'] :  self::$arrDefaultConfig['imap_open_n_retries'])
+            );
+    } else {
+        $this->mailbox = @imap_open($this->conn_str
+            , $this->conf['login']
+            , $this->conf['password']
+            , $this->conf['imap_open_options']
+            , ($this->conf['imap_open_n_retries'] ? $this->conf['imap_open_n_retries'] :  self::$arrDefaultConfig['imap_open_n_retries'])
+            , (!empty($this->conf['imap_open_params']) ? $this->conf['imap_open_params'] :  self::$arrDefaultConfig['imap_open_params'])
+            );
+    }
+    
+
+    if(!$this->mailbox) {
+        
+        $errMsg = "Cannot connect to server {$this->conn_str}, IMAP says: ". imap_last_error();
+        $e = imap_errors();
+        $this->v('ERROR: '.$errMsg."\r\nAll IMAP errors:\r\n".var_export($e, true));
+        
+        throw new eiseMailException($errMsg);
+
+    }
+
+    return $this->mailbox;
+
 }
 
 /**
@@ -582,71 +680,13 @@ public function receive(){
 
     $arrMessages = array();
 
-    $this->v('IMAP Session started');
-
-    if(!$this->conf['host'] 
-     || !$this->conf['login'] 
-     || !$this->conf['password'] 
-     ) 
-        throw new eiseMailException('Host/credentials are not specified.');
-
-
-    $host = '{'
-        .$this->conf['host']
-        .($this->conf['port'] ? ':'.$this->conf['port'] : '')
-        .($this->conf['flags'] 
-            ? (strpos($this->conf['flags'], '/')===0 ? '' : '/').$this->conf['flags']
-            : '')
-        .'}'
-        .($this->conf['mailbox_name'] ? $this->conf['mailbox_name'] : '');
-
-
-    /** try to connect */
-    $this->v("Trying to connect to server with the following params:\r\n".
-        var_export(array(
-                    $host
-                    , $this->conf['login']
-                    , $this->conf['password']
-                    , $this->conf['imap_open_options']
-                    , ($this->conf['imap_open_n_retries'] ? $this->conf['imap_open_n_retries'] :  self::$arrDefaultConfig['imap_open_n_retries'])
-                    , (!empty($this->conf['imap_open_params']) ? $this->conf['imap_open_params'] :  self::$arrDefaultConfig['imap_open_params'])
-                )
-            , true)
-        );
-
-    if (version_compare(PHP_VERSION, '5.3.2', '<')){ // if PHP version is lower than 5.3.2, we omit parameter 6
-        $this->inbox = @imap_open($host
-            , $this->conf['login']
-            , $this->conf['password']
-            , $this->conf['imap_open_options']
-            , ($this->conf['imap_open_n_retries'] ? $this->conf['imap_open_n_retries'] :  self::$arrDefaultConfig['imap_open_n_retries'])
-            );
-    } else {
-        $this->inbox = @imap_open($host
-            , $this->conf['login']
-            , $this->conf['password']
-            , $this->conf['imap_open_options']
-            , ($this->conf['imap_open_n_retries'] ? $this->conf['imap_open_n_retries'] :  self::$arrDefaultConfig['imap_open_n_retries'])
-            , (!empty($this->conf['imap_open_params']) ? $this->conf['imap_open_params'] :  self::$arrDefaultConfig['imap_open_params'])
-            );
-    }
-    
-
-    if(!$this->inbox) {
-        
-        $errMsg = "Cannot connect to server {$host}, IMAP says: ". imap_last_error();
-        $e = imap_errors();
-        $this->v('ERROR: '.$errMsg."\r\nAll IMAP errors:\r\n".var_export($e, true));
-        
-        throw new eiseMailException($errMsg);
-
-    }
+    $this->connect();
         
     /** Fetch mails accoring to criteria */
     $searchCriteria = ($this->conf['search_criteria'] ? $this->conf['search_criteria'] : self::$arrDefaultConfig['search_criteria']);
     $this->v("Searching mailbox by criteria \"{$searchCriteria}\"...");
 
-    $emails = imap_search($this->inbox, ($this->conf['search_criteria'] ? $this->conf['search_criteria'] : self::$arrDefaultConfig['search_criteria']) );
+    $emails = imap_search($this->mailbox, ($this->conf['search_criteria'] ? $this->conf['search_criteria'] : self::$arrDefaultConfig['search_criteria']) );
     
     $this->v( "Messages found: ".($emails ? count($emails): 0) );
 
@@ -669,12 +709,12 @@ public function receive(){
             /** if we'd like to set some flags, we do it */
             if($this->conf['set_flags_on_scan']){
                 $this->v('Setting flags \''.$this->conf['set_flags_on_scan']."' to {$email_number}");
-                $status = imap_setflag_full($this->inbox, $email_number, $this->conf['set_flags_on_scan']);
+                $status = imap_setflag_full($this->mailbox, $email_number, $this->conf['set_flags_on_scan']);
             }
 
             /** Get information specific to this email */
-            //$overview = imap_fetch_overview($this->inbox,$email_number);
-            $overview = imap_rfc822_parse_headers(imap_fetchheader($this->inbox,$email_number));
+            //$overview = imap_fetch_overview($this->mailbox,$email_number);
+            $overview = imap_rfc822_parse_headers(imap_fetchheader($this->mailbox,$email_number));
             
             /** Convert headers to utf8 */
             $ovrv = $this->mailOverviewUTF8($overview);
@@ -695,10 +735,10 @@ public function receive(){
 
             /** If flagGetMessageSource is set, we obtain whole message from the server */
             if($this->conf['flagGetMessageSource'])
-                $this->msg['source'] = imap_fetchheader($this->inbox, $email_number) . imap_body($this->inbox, $email_number, FT_PEEK);
+                $this->msg['source'] = imap_fetchheader($this->mailbox, $email_number) . imap_body($this->mailbox, $email_number, FT_PEEK);
 
             /** Getting message structure */
-            $structure = imap_fetchstructure($this->inbox, $email_number);
+            $structure = imap_fetchstructure($this->mailbox, $email_number);
 
             $this->v("Message {$email_number} type: {$structure->type}, subtype: {$structure->subtype} contains parts: ".count($structure->parts) );
             
@@ -713,7 +753,7 @@ public function receive(){
             if( $this->handleMessage() ){
                 if($this->conf['set_flags_on_handle']){
                     $this->v('Setting flags \''.$this->conf['set_flags_on_handle']."' to {$email_number}");
-                    $status = imap_setflag_full($this->inbox, $email_number, $this->conf['set_flags_on_handle']);
+                    $status = imap_setflag_full($this->mailbox, $email_number, $this->conf['set_flags_on_handle']);
                 }
             }
 
@@ -732,7 +772,7 @@ public function receive(){
     } 
      
     /** close the connection */
-    imap_close($this->inbox);
+    imap_close($this->mailbox);
 
     $this->v('IMAP Session complete');
     
@@ -786,7 +826,7 @@ private function fetch_file($part, $partID){
 
     if($is_attachment) {
         
-        $att = imap_fetchbody($this->inbox, $this->msg['msgno'], ($partID ? $partID : 1), FT_PEEK);
+        $att = imap_fetchbody($this->mailbox, $this->msg['msgno'], ($partID ? $partID : 1), FT_PEEK);
 
         /* 3 = BASE64 encoding */
         if($part->encoding == 3) { 
@@ -884,7 +924,15 @@ public function handleMessage(){
     return false;
 }
 
+
+public function save($strMessage){
+
+    imap_append($this->mailbox, $this->conn_str, $strMessage);
+
 }
+
+}
+
 
 
 
