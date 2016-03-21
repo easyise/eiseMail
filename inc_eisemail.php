@@ -303,7 +303,7 @@ function send($arrMsg=null){
 
     }
 
-    foreach($this->arrMessages as $ix=>$msg){
+    foreach($this->arrMessages as $ix=>&$msg){
 
         if($this->conf['debug']){
             $msg['mail_from'] = ($this->conf['mail_from_debug'] ? $this->conf['mail_from_debug'] : $msg['mail_from']);
@@ -319,10 +319,10 @@ function send($arrMsg=null){
             $this->arrMessages[$ix]['error'] = 'RCPT TO is not set for the message'; continue;
         }
 
-        $strMessage = $this->msg2String($msg);        
+        $msg['fullMessage'] = $this->msg2String($msg);        
 
         if ($this->conf['debug']){
-            echo $strMessage;
+            echo $msg['fullMessage'];
         }
 
         if($this->conf['flagAddToSentItems'] && $this->conf['imap_host']){
@@ -338,7 +338,7 @@ function send($arrMsg=null){
         }
 
         try {
-            $size_msg=strlen($strMessage); 
+            $size_msg=strlen($msg['fullMessage']); 
             $strMailFrom = "MAIL FROM:".$msg['mail_from']." SIZE={$size_msg}\r\n";
             $this->say( $strMailFrom, array(250) );
 
@@ -349,13 +349,13 @@ function send($arrMsg=null){
             
             $this->say( "DATA\r\n", array(354));
             
-            $this->say( $strMessage."\r\n.\r\n", array(250));
+            $this->say( $msg['fullMessage']."\r\n.\r\n", array(250));
             
             $this->arrMessages[$ix]['send_time'] = mktime();
 
             if($this->conf['flagAddToSentItems'] && $this->conf['imap_host']){
 
-                $imap->save($strMessage);
+                $imap->save($msg['fullMessage']);
 
             }
 
