@@ -693,8 +693,6 @@ public function receive(){
     /* if any emails found, iterate through each email */
     if($emails) {
         
-        $this->v("Messages: ".var_export($emails, true));
-        
         $count = 1;
         
         /* put the newest emails on top */
@@ -734,20 +732,29 @@ public function receive(){
             $this->msg['overview'] = $ovrv;
 
             /** If flagGetMessageSource is set, we obtain whole message from the server */
-            if($this->conf['flagGetMessageSource'])
+            if($this->conf['flagGetMessageSource']){
                 $this->msg['source'] = imap_fetchheader($this->mailbox, $email_number) . imap_body($this->mailbox, $email_number, FT_PEEK);
+                $this->v('Message source obtained - size: '.strlen($this->msg['source']).' bytes');
+            }
 
-            /** Getting message structure */
-            $structure = imap_fetchstructure($this->mailbox, $email_number);
+            /** if flagDontFetchMessageStructure is set, we omit this part of message handling */
+            if(!$this->conf['flagDontFetchMessageStructure']){
+                
+                /** Getting message structure */
+                $structure = imap_fetchstructure($this->mailbox, $email_number);
 
-            $this->v("Message {$email_number} type: {$structure->type}, subtype: {$structure->subtype} contains parts: ".count($structure->parts) );
+                $this->v("Message {$email_number} type: {$structure->type}, subtype: {$structure->subtype} contains parts: ".count($structure->parts) );
+                
+                /** Collect all attachments recursively from message root */
+                $this->msg['Attachments'] = array();
+
+                $this->fetch_file($structure, 0);
+
+                $this->v( "Message {$email_number} attachments picked: ".count($this->msg['Attachments']) );
+
+            }
+
             
-            /** Collect all attachments recursively from message root */
-            $this->msg['Attachments'] = array();
-
-            $this->fetch_file($structure, 0);
-
-            $this->v( "Message {$email_number} attachments picked: ".count($this->msg['Attachments']) );
 
             /** Call message handler */
             if( $this->handleMessage() ){
@@ -757,10 +764,12 @@ public function receive(){
                 }
             }
 
-            /** Unlink saved attachments */
-            foreach($this->msg['Attachments'] as $att){
-                if($att['temp_filename'])
-                    @unlink($att['temp_filename']);
+            if(!$this->conf['flagDontFetchMessageStructure']){
+                /** Unlink saved attachments */
+                foreach($this->msg['Attachments'] as $att){
+                    if($att['temp_filename'])
+                        @unlink($att['temp_filename']);
+                }
             }
 
             $arrMessages[] = $this->msg;
