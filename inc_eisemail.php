@@ -410,10 +410,21 @@ private function msg2String($msg){
             if (!$att['content'])
                 contunue;
 
-            $strAttachment = chunk_split ( base64_encode($att['content']) );
+            switch ($att['Content-Type']) {
+                case 'message/rfc822':
+                    $strAttachment = $att['content'];
+                    $encoding = 'binary';
+                    break;
+                
+                default:
+                    $strAttachment = chunk_split ( base64_encode($att['content']) );
+                    $encoding = 'base64';
+                    break;
+            }
+            
 
             $strMessage .= "--".self::$Boundary."\r\nContent-Type: ".$att['Content-Type']."; name=\"".$att['filename']."\"\r\n".
-                        "Content-Transfer-Encoding: base64\r\n".
+                        "Content-Transfer-Encoding: {$encoding}\r\n".
                         "Content-Disposition: attachment;\r\n\r\n";
 
             $strMessage .= $strAttachment."\r\n\r\n";
