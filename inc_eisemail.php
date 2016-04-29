@@ -380,6 +380,26 @@ function send($arrMsg=null){
 }
 
 /**
+ * This function returns source of a partiqular message in queue, its number (index) is specified by $ixToGet parameter. If this parameter is omitted, first message source is returned. This method uses msg2String private method.
+ *
+ * @param $ixToGet integer Message number (index) in queue.
+ *
+ * @return string Message source.
+ */
+public function getMessageSource($ixToGet = null){
+
+    foreach($this->arrMessages as $ix=>&$msg){
+        if($ixToGet!==null){
+            if($ix===$ixToGet)
+                return $this->msg2String($msg);
+                    
+        } else 
+            return $this->msg2String($msg);
+    }
+
+}
+
+/**
  * This function prepares message for sending: it converts it to string with headers and message parts
  *
  * @param array $msg message array
