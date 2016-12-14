@@ -554,7 +554,7 @@ private function isItOk($rcv, $arrExpectedReplyCode){
     $code = (int)$arr[1];
 
     if (!in_array($code, $arrExpectedReplyCode)){
-        throw new eiseMailException("Bad response: ".$rcv, $this->arrMessages);
+        throw new eiseMailException("Bad response: ".$rcv." $code", $this->arrMessages);
     }
 
 }
