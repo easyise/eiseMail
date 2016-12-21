@@ -81,6 +81,8 @@ public function coverPassword(){
  */
 static function explodeAddresses($addrList, $defaultDomain = ''){
 
+    $addrList = trim($addrList, ",; \t\n\r\0\x0B");
+
     $arr = imap_rfc822_parse_adrlist($addrList, $defaultDomain);
     $arrRet = array();
 
@@ -213,8 +215,8 @@ function addMessage ($msg){
         , 'charset' => $this->conf['charset']
         , 'To' => $this->conf['To']
         , 'Reply-To' => $this->conf['Reply-To']
-        , 'CC' => null
-        , 'BCC' => null
+        , 'Cc' => null
+        , 'Bcc' => null
           , 'Subject' => $this->conf['Subject']
             , 'flagEscapeSubject' => $this->conf['flagEscapeSubject']
           , 'Head' => $this->conf['Head']
@@ -246,8 +248,8 @@ function addMessage ($msg){
     if(!$msg['rcpt_to']){
         $msg['rcpt_to'] = array_merge(
             (isset($msg['To']) ? self::explodeAddresses($msg['To']) : array())
-            , (isset($msg['CC']) ? self::explodeAddresses($msg['CC']) : array())
-            , (isset($msg['BCC']) ? self::explodeAddresses($msg['BCC']) : array())
+            , (isset($msg['Cc']) ? self::explodeAddresses($msg['Cc']) : array())
+            , (isset($msg['Bcc']) ? self::explodeAddresses($msg['Bcc']) : array())
             );
     }
 
@@ -480,7 +482,7 @@ private function msg2String($msg){
     $strMessage = "Subject: ".$msg['Subject']."\r\n"
         ."From: ".($msg['From'] ? $msg['From'] : $msg['mail_from'])."\r\n"
         ."To: ".($msg['To'] ? $msg['To'] : $msg['rcpt_to_string'])."\r\n"
-        .($msg["CC"] ? "CC: {$msg["CC"]}\r\n" : "")
+        .($msg["Cc"] ? "Cc: {$msg["Cc"]}\r\n" : "")
         .($msg["Bcc"] ? "Bcc: {$msg["Bcc"]}\r\n" : "")
         ."X-Sender: ".$msg['mail_from']."\r\n"
         ."Return-Path: ".($msg["Return-Path"]!=""
