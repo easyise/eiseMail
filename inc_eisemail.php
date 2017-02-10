@@ -281,7 +281,15 @@ function send($arrMsg=null){
 
     if (!$this->connect) throw new Exception("Cannot connect to mail server ".$this->conf["host"].':'.$this->conf["port"]);
 
-    $this->v('SMTP session started');
+    $this->v("SMTP session started with the following params:\r\n".
+        var_export(array(
+                    $this->conf["host"]
+                    , $this->conf["port"]
+                    , $this->conf['login']
+                    , $this->conf['passCovered']
+                )
+            , true)
+        );
 
     $this->listen();
     
