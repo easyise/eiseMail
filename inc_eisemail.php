@@ -891,7 +891,8 @@ private function fetch_file($part, $partID){
             ? $name 
             : ($filename!='' ? $filename : time().'.dat')
             );
-        $arrAtt['filename'] = imap_utf8($arrAtt['filename']);
+        //$arrAtt['filename'] = imap_utf8($arrAtt['filename']);
+        $arrAtt['filename'] = iconv_mime_decode($arrAtt['filename'], 0, 'UTF-8');
         $arrAtt['Content-Type'] = $part->subtype;
         if($this->conf['flagSaveAttachments']){
             $ext = pathinfo($arrAtt['filename'], PATHINFO_EXTENSION);
