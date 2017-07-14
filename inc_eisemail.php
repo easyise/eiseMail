@@ -160,6 +160,19 @@ static function doReplacements($text, $arrReplacements){
     return $text;
 }
 
+public static function getSubject($rfc822){
+    $separator = "\n";
+    $reSubj = '/^(Subject\:)/i';
+    $line = trim(strtok($rfc822, $separator));
+
+    while ($line !== false) {
+        if(preg_match($reSubj, $line)){
+            return trim(preg_replace($reSubj, '', $line));
+        }
+        $line = trim(strtok( $separator ));
+    }
+}
+
 }
 
 /**
@@ -874,6 +887,10 @@ private function fetch_file($part, $partID){
         }
     }
 
+    if($part->type==2) {
+        $is_attachment = true;
+    }
+
     if($is_attachment) {
         
         $att = imap_fetchbody($this->mailbox, $this->msg['msgno'], ($partID ? $partID : 1), FT_PEEK);
@@ -889,7 +906,12 @@ private function fetch_file($part, $partID){
 
         $arrAtt['filename'] = ($name!='' 
             ? $name 
-            : ($filename!='' ? $filename : time().'.dat')
+            : ($filename!='' 
+                ? $filename 
+                : ($part->type==2 
+                    ? self::getSubject($att).".eml"
+                    : time().'.dat')
+                )
             );
         //$arrAtt['filename'] = imap_utf8($arrAtt['filename']);
         $arrAtt['filename'] = iconv_mime_decode($arrAtt['filename'], 0, 'UTF-8');
@@ -910,7 +932,7 @@ private function fetch_file($part, $partID){
 
     }
 
-    if(isset($part->parts) && count($part->parts)) {
+    if(isset($part->parts) && count($part->parts) && $part->type!=2){
         foreach($part->parts as $i=>$subpart) {
 
             $this->fetch_file( $subpart, ($partID ?  $partID.'.' : '').($i+1) );
