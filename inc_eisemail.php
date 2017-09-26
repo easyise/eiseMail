@@ -287,12 +287,12 @@ function send($arrMsg=null){
         $this->addMessage($arrMsg);
 
     if(count($this->arrMessages)==0)
-        throw new Exception('Message queue is empty');
+        throw new eiseMailException('Message queue is empty');
 
     // connect
-    $this->connect = fsockopen ($this->conf["host"], $this->conf["port"], $errno, $errstr, 30);
+    $this->connect = @fsockopen ($this->conf["host"], $this->conf["port"], $errno, $errstr, 30);
 
-    if (!$this->connect) throw new Exception("Cannot connect to mail server ".$this->conf["host"].':'.$this->conf["port"]);
+    if (!$this->connect) throw new eiseMailException("Can't connect to {$this->conf["host"]}:{$this->conf["port"]} - [$errno] $errstr");
 
     $this->v("SMTP session started with the following params:\r\n".
         var_export(array(
