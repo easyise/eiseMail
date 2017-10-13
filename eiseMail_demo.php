@@ -34,7 +34,7 @@ ob_implicit_flush(1);
 
 include_once('inc_eisemail.php');
 
-define('EMAIL_FROM', '"YOUR_NAME" YOUR_GOOGLE_LOGIN@gmail.com');
+define('EMAIL_FROM', '"YOUR_NAME" <YOUR_GOOGLE_LOGIN@gmail.com>');
 define('EMAIL_TO1', '"YOUR OTHER NAME" <you@other.address>');
 define('EMAIL_TO2', '"...AND OTHER NAME" <you@some_other.address>');
 
@@ -45,7 +45,7 @@ $sender  = new eiseMail(array(
 			'subjPrefix'=>'[eiseMail demo]'
 			, 'host' => "smtp.gmail.com"
             , 'port' => 587 //465
-            , 'login' => eiseMail::getClearAddress(EMAIL_FROM, true) // should be the same as From address
+            , 'login' => trim(eiseMail::prepareAddressRFC(EMAIL_FROM), '<>') // should be the same as From address
             , 'password' => '*********'
             , 'debug' => false // if set to TRUE send() method outputs all negotiations to std output as plain text
 			, 'verbose' => true // if set to TRUE send() method outputs all negotiations to std output as plain text

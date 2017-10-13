@@ -2,186 +2,61 @@
 /**
  *
  * eiseMail library
- *    
- *    This class is designed to send mail messages with specified SMTP server.
+ * ===
+ * 
+ * It consists of two major classes:
+ * 1. [eiseSMTP](#eisesmtp) - the class that sends mail using sockets and supports TLS and other required security features. Developed especially to make batch send much easier.
+ * 2. [eiseIMAP](#eiseimap) - the class that reads mail with IMAP. It's not just a wrapper to native PHP IMAP, it is aimed to obtain message attachments in simpliest possible way.
  *
- *  It can be used in the following way:
- *    1)  initialize object with connection settings to the SMTP server
- *    2)  Add messages to send queue using addMessage() method (attachments can be added to messages as associative array members, class will handle them in proper way)
- *    3)  Send queue using send() method, it returns message array with timestamps when messages were actually sent.
- *    
- *    send() method uses sockets to connect to SMTP server. It supports host authentication and TLS channel encryption. It pushes the message queue to the server right after connection is established, channel encrypted and authentication succeeded. 
- *    
- *    Class has been tested for proper communication with the following SMTP servers:
- *    -   Postfix/Sendmail
- *    -   Microsoft Exchange
- *    -   Google mail
- *    -   Microsoft Office365
- *    -   Yandex mail
- *    
- *    Actual example can be found in eiseMail_demo.php script attached to this package.
- *    
- *    In case of exception, class methods are throwing eiseMailException objects with mail message queue in its actual state so you can trace what messages were sent and what were not.
- *    PHP version: >5.1
- *    PHP extensions required: OpenSSL
+ * Both classes are based on [eiseMail_base](#eisemail_base) class that contains some handful utilities.
+ *
+ * In case of exception, class methods are throwing [eiseMailException](#eisemailexception) object with mail message queue in its actual state so you can trace what messages were sent and what were not.  
+ * PHP version: >5.1
+ * @uses: OpenSSL, IMAP
  *
  *   
- *    author: Ilya Eliseev (ie@e-ise.com)
- *    contributors: Dmitry Zakharov (dmitry.zakharov@ru.yusen-logistics.com), Igor Zhuravlev (igor.zhuravlev@ru.yusen-logistics.com)
- *    sponsors: Yusen Logistics Rus LLC, Russia
- *    version: 1.0
- *
- * Developed under GNU General Public License, version 3:
- * http://www.gnu.org/licenses/lgpl.txt
- */
-
-
-
-/**
- * This class containes basic functions to handle mails/addresses/flow etc
- */
-class eiseMail_base {
-
-const keyEscapePrefix = '##';
-const keyEscapeSuffix = '##';
-const passSymbolsToShow = 3;
-
-/**
- * This function echoes if 'verbose' configuration flag is on
- *
- * @param string $string - string to echo.
- *
- * @return void
- */
-protected function v($string){
-    if($this->conf['verbose']){
-        echo ($this->conf['verbose']==='htmlspecialchars' ? '<br>'.htmlspecialchars(Date('Y-m-d H:i:s').': '.$string) : "\r\n".Date('Y-m-d H:i:s').': '.trim($string));
-        ob_flush();
-        flush();
-    }
-}
-
-public function coverPassword(){
-
-    $nSymsToShow = min(strlen($this->conf['password']), self::passSymbolsToShow);
-    $this->conf['passCovered'] = substr($this->conf['password'], 0, $nSymsToShow).str_repeat("*",strlen($this->conf['password'])-$nSymsToShow);
-    
-}
-
-/**
- * Explodes address list according to RFC2822: 
- * "Name Surname" <mailbox@host.domain>, "Surname, Name" <mailbox1@host.domain>
- * etc to array. Ordinary explode() will not work, because comma (",") can be a part of personal information.
- * E.g. "John Smith, Mr" <john.smith@domain.com>
+ * @author: Ilya Eliseev <ie@e-ise.com>, contributors: Dmitry Zakharov, Igor Zhuravlev
  * 
- * @param string $addrList Address list
+ * Sponsors: Yusen Logistics Rus LLC, Russia
+ * @version: 1.0
  *
- * @return array of strings with addresses
- * 
- */
-static function explodeAddresses($addrList, $defaultDomain = ''){
-
-    $addrList = trim($addrList, ",; \t\n\r\0\x0B");
-
-    $arr = imap_rfc822_parse_adrlist($addrList, $defaultDomain);
-    $arrRet = array();
-
-    foreach($arr as $o){
-        $arrRet[] = ($o->personal ? '"'.$o->personal.'" ' : '').'<'.$o->mailbox.'@'.$o->host.'>';
-    }
-    return $arrRet;
-
-}
-
-/**
- * Retrieves exact unique addresses from list matching according to RFC2822: 
- * "Name Surname" <mailbox@host.domain>, "Surname, Name" <mailbox1@host.domain>
- * etc
- * 
- * @param string $addrList Address list
+ * @license GNU Public License <http://opensource.org/licenses/gpl-license.php>
  *
- * @return array of strings with addresses w/o personal info
- * 
  */
-static function getAddresses($addrList, $defaultDomain = ''){
 
-    $arr = imap_rfc822_parse_adrlist($addrList, $defaultDomain);
-    $arrRet = array();
-
-    foreach($arr as $o){
-        $arrRet[] = strtolower($o->mailbox.'@'.$o->host);
-    
-    }
-
-    return array_unique($arrRet);
-
-}
-
-/**
- * Gets RFC-compliant mail address to be used with 'MAIL FROM:' and 'RCPT TO:' SMPT commands
- * 
- * @param string $addr - mail address list
- *
- * @return false if $addr contains something wrong. Otherwise removes personal information from the address and returns address like '<mailbox@domain.com>'
- */
-static function prepareAddressRFC( $addr, $defaultDomain=''){
-
-    $oAddrs = imap_rfc822_parse_adrlist($addr, $defaultDomain);
-
-    if(!$oAddrs)
-        return false;
-
-    $oAddr = $oAddrs[0];
-
-    $addr = '<'.$oAddr->mailbox.($oAddr->host ? '@'.$oAddr->host : '').'>';
-
-    return $addr;
-
-}
 
 
 /**
- * replaces escaped statements (e.g. ##Sender## or ##orderHref##) in $text
- * with values from $arrReplacements array (e.g 'Sender' => 'John Doe', 'orderHref' => 'http://mysite.com/orders/12345')
+ * Class for mail sending and communications via SMTP. In difference with other mail utilities in PHP, it is aimed for batch mailing to various recipients with a little adaptation of mail message to each recipient.
+ * Message body, header, footer, subject can be set on main configuration options and then implemented in each mail in batch.
  *
- * @param string $text original text
- * @param array $arrReplacements is an associative array of keys and replacements. Each occurence of ##$key## will be replaced with corresponding value.
- *
- * @return string corrected text
- */
-static function doReplacements($text, $arrReplacements){
-    foreach($arrReplacements as $key=>$value){
-        if(is_object($value) || is_array($value))
-            continue;
-        $text = str_replace(self::keyEscapePrefix.$key.self::keyEscapeSuffix, $value, $text);
-    }
-    $text = preg_replace('/('.preg_quote(self::keyEscapePrefix, '/').'\S+'.preg_quote(self::keyEscapeSuffix).')/i', '', $text);
-
-    return $text;
-}
-
-public static function getSubject($rfc822){
-    $separator = "\n";
-    $reSubj = '/^(Subject\:)/i';
-    $line = trim(strtok($rfc822, $separator));
-
-    while ($line !== false) {
-        if(preg_match($reSubj, $line)){
-            return trim(preg_replace($reSubj, '', $line));
-        }
-        $line = trim(strtok( $separator ));
-    }
-}
-
-}
-
-/**
- * Class for mail sending and communications via SMTP
+ * It can be used in the following way:
+ * 1.  Create object with connection settings to the SMTP server
+ * 2.  Add messages to send queue using addMessage() method (attachments can be added to messages as associative array members, class will handle them in proper way)
+ * 3.  Send queue using send() method, it returns message array with timestamps when messages were actually sent.
+ *    
+ *    
+ * [send()](#eisemail-send) method uses sockets to connect to SMTP server. It supports host authentication and TLS channel encryption. It pushes the message queue to the server right after connection is established, channel encrypted and authentication succeeded. 
+ * 
+ * Being executed with `['flagAddToSentItems'] = true` send() method will make an attempt to save message in sender's "Sent Items" folder.
+ *    
+ * Class has been tested for proper communication with the following SMTP servers:
+ * -   Postfix/Sendmail
+ * -   Microsoft Exchange
+ * -   Google mail
+ * -   Microsoft Office365
+ * -   Yandex mail
+ *    
+ * Actual example can be found in eiseMail_demo.php script attached to this package.
  *
  */
 class eiseSMTP extends eiseMail_base{
 
+/**
+ * Mail message queue to send.
+ */
 public $arrMessages = array();
+
 static $Boundary = "==Multipart_Boundary_eiseMail";
 
 public static $arrDefaultConfig = Array(
@@ -211,13 +86,93 @@ public static $arrDefaultConfig = Array(
 
   );
 
+/**
+ * Constructor just initializes the object and covers password for possible verbose mode.
+ * 
+ * @param array $arrConfig - configuration options array:
+ * - Content-Type (string) - message body content type, default "text/plain"
+ * - charset (string) - message body charset, default "utf-8"
+ * - host (string) - SMTP server host name / IP address, default "localhost"
+ * - port (string) - SMTP server port, default "25"
+ * - tls (boolean) - flag use TLS channel encryption, default false
+ * - login (string) - SMTP server login, default ""
+ * - password (string) - SMTP server password, default ""
+ * - localhost (string) - defines how to introduce yourself to SMTP server with HELO/EHLO SMTP command, default "localhost"
+ * - Subject (string) - default subject for message queue, default ''
+ * - Head (string) - default message body head, default ''
+ * - Bottom (string) - default message bottom , default ''
+ * - flagAddToSentItems (boolean) - set to true if you need a copy of message to be saved in user Sent Items, default false
+ * - imap_host (string) - IMAP host address, default ''
+ * - imap_login (string) - (optional) IMAP login. By default it is set by 'login' field. Specify only if it differs from it. Default ''
+ * - imap_password (string) - (optional) IMAP password, default ''
+ * - verbose (boolean) - when set to TRUE class methods are sending actual conversation data to standard output, default false
+ * - debug (boolean) - when set to TRUE mail is actually sent to 'rcpt_to_debug' address + verbose, default false
+ *
+ * Default mail message fields can be set here also:  
+ * - Content-type (default is 'text/plain')
+ * - charset (default is 'utf8')
+ * - From 
+ * - To
+ * - Reply-To 
+ * - Subject (string)
+ * - flagEscapeSubject
+ * - Head
+ * - Bottom
+ *
+ * See more at [eiseSMTP::addMessage()](#eisesmtp-addmessage) description.
+ * 
+ */
 function __construct($arrConfig){
     
     $this->conf = array_merge(self::$arrDefaultConfig, $arrConfig);
     $this->coverPassword();
 }
 
-
+/**
+ * This method adds message to message queue. Also it prepares all mandatory SMTP headers like `mail from:` and `rcpt to:` basing on From, To, Cc and Bcc fields.
+ *
+ * @category Mail send 
+ *
+ * @param array $msg - Associative array with message data. See description below:
+ *  - From (string) - content of 'From' field, can be set by default with object configuration options, see [eiseSMTP::__construct()](#eisesmtp-__construct), default `$this->conf['From']`. If not set, it will be taken from login field.
+ *  - Content_Type (string) - MIME-type, default is $this->conf['Content-Type']
+ *  - charset (string) - charset, default $this->conf['charset']
+ *  - To (string) - "To" header contents, default $this->conf['To']
+ *  - Reply-To (string) - "Reply-To" header contents, default' => $this->conf['Reply-To']
+ *  - Cc (string) - "Cc" addresses list, default null
+ *  - Bcc (string) - "Bcc" address list, default null
+ *  - Subject (string) - Message subject, default $this->conf['Subject']
+ *  - flagEscapeSubject (booelan) - flag that tells whether to escape subject or not, default can be set by $this->conf['flagEscapeSubject']
+ *  - Head (string) - Message header, default is $this->conf['Head']. Contents of this field will be combined with Text and Bottom members of this array. Before send all necessary replacements will be done with eiseMail_base::doReplacements().
+ *  - Text (string) - Message body, default ''
+ *  - Bottom (string) - Message footer, default $this->conf['Bottom']
+ *  - Attachments (array) - enumerable array of attachments. Each attachment have the following structure:
+ *      - filename (string) - file name as it will saved with the message
+ *      - content (binary) - attachment contents
+ *      - Content-Type (string) - attachment MIME-type
+ *
+ * Example:
+ *``` php
+ * $sender->addMessage(array('From'=> '"John Doe" <john.doe@acme.com>'
+ *         , 'To' => '"Bar, Foo" <foo.bar@sukaba.com>'
+ *         , 'Subject' => 'Message with 2 kinds of attachments'
+ *         , 'Text' => 'Hello there'
+ *         , 'Attachments' => array(
+ *            array ('filename'=>'file1.txt'
+ *                , 'content'=>"Hello\r\nfrom the text file"
+ *                , 'Content-Type'=>'text/plain')
+ *            , array ('filename'=>'file2.txt'
+ *                , 'content'=>"Hello\r\nfrom the text file again"
+ *                , 'Content-Type'=>'text/plain')
+ *            , array ('filename'=>'welcome_to_the_internet.jpg'
+ *                , 'content'=>file_get_contents('welcome_to_the_internet.jpg')
+ *                , 'Content-Type'=>'image/jpeg')
+ *
+ *            )
+ *         );
+ *```
+ *            
+ */
 function addMessage ($msg){
 
     $msgDefault = array(
@@ -280,7 +235,17 @@ function addMessage ($msg){
 
 }
 
-
+/**
+ * This method performs connection to SMTP server and sends all message queue. 
+ * Then it converts each message from $arrMessages to string, performs base64-encoding, chunk-splitting of the attachemtns and send each message to anyone in To, Cc and Bcc messages.  
+ * In case of failure it throws eiseMailException object with message queue. If you need to analyze what message were sent or not, you can walk through eiseMailException $arrMessages array. Each member of this array will be updated with the following members:
+ * - send_time (int) - UNIX timestamp when message was sent, in case of success
+ * - error (string) - Error message, in case of failure
+ * 
+ * @category Mail send 
+ * 
+ * @param array $arrMsg - single message, see ...
+ */
 function send($arrMsg=null){
 
     if($arrMsg)
@@ -405,7 +370,7 @@ function send($arrMsg=null){
 /**
  * This function returns source of a partiqular message in queue, its number (index) is specified by $ixToGet parameter. If this parameter is omitted, first message source is returned. This method uses msg2String private method.
  *
- * @param $ixToGet integer Message number (index) in queue.
+ * @param integer $ixToGet - Message number (index) in queue.
  *
  * @return string Message source.
  */
@@ -596,11 +561,24 @@ class eiseIMAP extends eiseMail_base{
 
 
 /** 
- * Default configuration array 
+ *
+ * Default configuration associative array:
+ * - host (string) - IMAP server host name / IP address, default "localhost"
+ * - port (string) - IMAP server port , default "993"
+ * - flags (string) - flags according to `imap_open()` PHP function , default '/imap/ssl'
+ * - mailbox_name (string) - flags according to imap_open() PHP function, default 'INBOX'
+ * - login (string) - SMTP server login , default ""
+ * - password (string) - SMPT server password , default ""
+ * - imap_open_options (int) - options for [imap_open()](http://php.net/manual/ru/function.imap-open.php), default 0
+ * - imap_open_n_retries (int) - attempt number for [imap_open()](http://php.net/manual/ru/function.imap-open.php), default 1
+ * - imap_open_params (string) - parameters array for [imap_open()](http://php.net/manual/ru/function.imap-open.php), default array() 
+ * - search_criteria (string) -  search criteria for imap_search() function, default 'NEW'
+ * - max_messages (string) -  maximum messages, default 10
+ * - set_flags_on_scan (string) - flags to set on message when it's been scanned by script, default '\Seen'
+ * - set_flags_on_handle (string) - flags to set on message when it's been handled by script, default '\Answered'
+ * - flagGetMessageSource (string) - when TRUE it will obtain all message source on reception, default false
+ * - verbose (string) - when set to TRUE class methods are sending actual flow data to standard output, default true
  * 
- * array $arrDefaultConfig {
- *   
- * }
  */
 public static $arrDefaultConfig = Array(
 
@@ -631,11 +609,7 @@ public static $arrDefaultConfig = Array(
 /**
  * Object constructor. Receives configuration array as parameter and merges it with the default one.
  *
- * @param array $arrConfig {
- *      Mandatory. Configuration array.
- *      
- * }
- * @see eiseImap::$strDefaultConfig
+ * @param array $arrConfig - see [eiseImap::$arrDefaultConfig](#eiseimap-arrdefaultconfig)
  */
 function __construct($arrConfig){
     
@@ -645,6 +619,11 @@ function __construct($arrConfig){
     
 }
 
+/**
+ * This method establishes connection with IMAP server.
+ *
+ * @category Mail receive
+ */
 public function connect(){
 
     $this->v('Starting IMAP Session...');
@@ -712,23 +691,21 @@ public function connect(){
 }
 
 /**
- * Retrieves messages from the remote server as an associative array.
+ * This method retrieves messages from the remote server as an associative array.
  *
- * @return array $arrMessages {
- *        Message array in the same manner as source for eiseSMTP function.
- * string From - sender, encoded to UTF-8
- * string To - addressee, encoded to UTF-8
- * string CC - CC field, encoded to UTF-8
- * string Subject - Subject field, encoded to UTF-8
- * object overview - first object from return value of imap_fetch_overview() function
- * string source - message source
- * array Attachments {
- *   Array of attachments, in the same manner as for eiseSMTP function
- *        string filename - filename, encoded to UTF-8
- *        binary content - binary content of the attached file
- *        Content-Type - content MIME type   
- *    }
- * }
+ * @category Mail receive
+ *
+ * @return Message array in the same manner as source for eiseSMTP function.
+ * - From (string) - sender, encoded to UTF-8
+ * - To (string) - addressee, encoded to UTF-8
+ * - CC (string) - CC field, encoded to UTF-8
+ * - Subject (string) - Subject field, encoded to UTF-8
+ * - overview (object) - first object from return value of [imap_fetch_overview()](http://php.net/manual/ru/function.imap-fetch-overview.php) function
+ * - source (string) - message source
+ * - Attachments (array) - array of attachments, in the same manner as for eiseSMTP function:
+ *      - filename (string) - filename, encoded to UTF-8
+ *      - content (binary) - binary content of the attached file
+ *      - Content-Type (string) - content MIME type   
  */
 public function receive(){
 
@@ -845,18 +822,21 @@ public function receive(){
 
 /** 
  * Function recursively walks through all $part object and picks up any attachment.
- * This object is returned by imap_fetchstructure() PHP IMAP function. 
+ *
+ * This object is returned by [imap_fetchstructure()](http://php.net/manual/ru/function.imap-fetchstructure.php) PHP IMAP function. 
+ *
  * There can be 3 cases:
- *     1) Message is the file: it has only one part that contains attached file
- *     2) Multipart message: when message contains few parts: some for texts, some for attachments
- *     3) Alternative messages: when message consists of few parts: each one can have few subparts with attachments/texts etc.
+ * 1. Message is the file: it has only one part that contains attached file
+ * 2. Multipart message: when message contains few parts: some for texts, some for attachments
+ * 3. Alternative messages: when message consists of few parts: each one can have few subparts with attachments/texts etc.  
  *     This function just walks through all these parts recursively.
+ *
+ * @category Mail receive
  * 
  * @param object $part - the object that represents message structure element
  * @param $partID - id for part to be analyzed for attachments. '0' represents root $part of message, '1', '2', etc - subparts of root part
  *     '2.1', '2.2', etc - subparts of sub-root part, and so on.
  * 
- * @return void
  */
 private function fetch_file($part, $partID){
 
@@ -945,16 +925,17 @@ private function fetch_file($part, $partID){
 
 /**
  * This function converts mail headers to unicode and updates $overview object that returned 
- * by imap_fetch_overview() PHP function and updates the object with corresponding fields with _utf8 suffix:
+ * by [imap_fetch_overview()](http://php.net/manual/en/function.imap-fetch-overview.php) PHP function and updates the object with corresponding fields with _utf8 suffix:
  *  $overview->to_uft8
  *  $overview->from_uft8
  *  $overview->subject_utf8
  *
- * @param object $overview - a single overview message object taken from the array returned by imap_fetch_overview() PHP function
+ * @category Message processing
+ *
+ * @param object $overview - a single overview message object taken from the array returned by [imap_fetch_overview()](http://php.net/manual/en/function.imap-fetch-overview.php) PHP function
  *
  * @return $overview object
  *
- * @link http://php.net/manual/en/function.imap-fetch-overview.php
  */
 public function mailOverviewUTF8($overview){
 
@@ -976,11 +957,9 @@ public function mailOverviewUTF8($overview){
  * This is interface function, to be overridden in extending class.
  * By default it returns true, i.e. all messages will be returned with attachments.
  *
- * @param object $overview - a single overview message object taken from the array returned by imap_fetch_overview() PHP function
+ * @param object $overview - a single overview message object taken from the array returned by [imap_fetch_overview() PHP function](http://php.net/manual/en/function.imap-fetch-overview.php)
  *
  * @return variant - When it returns false if message will be skipped. If any other value - message will be completely fetched from the server
- *
- * @link http://php.net/manual/en/function.imap-fetch-overview.php
  *
  */
 public function checkMailOverview($overview){
@@ -997,7 +976,11 @@ public function handleMessage(){
     return false;
 }
 
-
+/**
+ * This function saves message in specified IMAP mailbox. It was used in this library to save sent mail to "Sent Items" in function [eiseSMTP::send()](#eisesmtp-send).
+ *
+ * @param sttring $strMessage - the message, ready-to-send via SMTP
+ */
 public function save($strMessage){
 
     imap_append($this->mailbox, $this->conn_str, $strMessage);
@@ -1022,7 +1005,6 @@ class eiseMailException extends Exception {
  * @param $usrMsg {string} text user message
  * @param $arrMessages {array} array of messages that can be set as an attemp to save unsent / unhandled messages in case of exception.
  * 
- * @class eiseMailException
  */
 function __construct($usrMsg, $arrMessages=array()){
     parent::__construct($usrMsg);
@@ -1040,9 +1022,170 @@ function getMessages(){
 
 
 /**
- * Backward-compatibility
- * 
- * @extends eiseSMTP
+ * This class is for backward-compatibility
+ * @ignore
  */
 class eiseMail extends eiseSMTP{}
-?>
+
+/**
+ * This class contains basic functions to handle mails/addresses/flow etc
+ */
+class eiseMail_base {
+
+const keyEscapePrefix = '##';
+const keyEscapeSuffix = '##';
+const passSymbolsToShow = 3;
+
+/**
+ * This function echoes if 'verbose' configuration flag is on.
+ *
+ * @param string $string - string to echo.
+ *
+ * @category Utilities
+ *
+ * @return void
+ */
+protected function v($string){
+    if($this->conf['verbose']){
+        echo ($this->conf['verbose']==='htmlspecialchars' ? '<br>'.htmlspecialchars(Date('Y-m-d H:i:s').': '.$string) : "\r\n".Date('Y-m-d H:i:s').': '.trim($string));
+        ob_flush();
+        flush();
+    }
+}
+
+/**
+ * In order to prevent uncovered password display in verbose mode, this function offers partial password coverage. Number of symbols to show is set by `eiseMail_base::passSymbolsToShow`. Default value is 3.
+ * Password will be shown with first `eiseMail_base::passSymbolsToShow`, all the rest will be replaced with asterisks. Example: `echo eiseMail::coverPassword('qwerty'); // will print 'qwe***'`
+ *
+ * @category Utilities
+ */
+public function coverPassword(){
+
+    $nSymsToShow = min(strlen($this->conf['password']), self::passSymbolsToShow);
+    $this->conf['passCovered'] = substr($this->conf['password'], 0, $nSymsToShow).str_repeat("*",strlen($this->conf['password'])-$nSymsToShow);
+    
+}
+
+/**
+ * Explodes address list according to RFC2822: 
+ * `"Name Surname" <mailbox@host.domain>`, `"Surname, Name" <mailbox1@host.domain>`
+ * etc to array. Ordinary explode() will not work, because comma (",") can be a part of personal information.
+ * E.g. `"John Smith, Mr" <john.smith@domain.com>`
+ *
+ * @category Message processing
+ * 
+ * @param string $addrList Address list
+ *
+ * @return array of strings with addresses
+ * 
+ */
+static function explodeAddresses($addrList, $defaultDomain = ''){
+
+    $addrList = trim($addrList, ",; \t\n\r\0\x0B");
+
+    $arr = imap_rfc822_parse_adrlist($addrList, $defaultDomain);
+    $arrRet = array();
+
+    foreach($arr as $o){
+        $arrRet[] = ($o->personal ? '"'.$o->personal.'" ' : '').'<'.$o->mailbox.'@'.$o->host.'>';
+    }
+    return $arrRet;
+
+}
+
+/**
+ * Retrieves exact unique addresses from list matching according to RFC2822: 
+ * "Name Surname" <mailbox@host.domain>, "Surname, Name" <mailbox1@host.domain>
+ * etc
+ *
+ * @category Message processing
+ * 
+ * @param string $addrList Address list
+ *
+ * @return array of strings with addresses w/o personal info
+ * 
+ */
+static function getAddresses($addrList, $defaultDomain = ''){
+
+    $arr = imap_rfc822_parse_adrlist($addrList, $defaultDomain);
+    $arrRet = array();
+
+    foreach($arr as $o){
+        $arrRet[] = strtolower($o->mailbox.'@'.$o->host);
+    
+    }
+
+    return array_unique($arrRet);
+
+}
+
+/**
+ * Gets RFC-compliant mail address to be used with 'MAIL FROM:' and 'RCPT TO:' SMPT commands
+ *
+ * @category Message processing
+ * 
+ * @param string $addr - mail address list
+ *
+ * @return false if $addr contains something wrong. Otherwise removes personal information from the address and returns address like '<mailbox@domain.com>'
+ */
+static function prepareAddressRFC( $addr, $defaultDomain=''){
+
+    $oAddrs = imap_rfc822_parse_adrlist($addr, $defaultDomain);
+
+    if(!$oAddrs)
+        return false;
+
+    $oAddr = $oAddrs[0];
+
+    $addr = '<'.$oAddr->mailbox.($oAddr->host ? '@'.$oAddr->host : '').'>';
+
+    return $addr;
+
+}
+
+
+/**
+ * It replaces escaped statements (e.g. ##Sender## or ##orderHref##) in $text
+ * with values from $arrReplacements array (e.g 'Sender' => 'John Doe', 'orderHref' => 'http://mysite.com/orders/12345')
+ *
+ * @category Message processing
+ *
+ * @param string $text original text
+ * @param array $arrReplacements is an associative array of keys and replacements. Each occurence of ##$key## will be replaced with corresponding value.
+ *
+ * @return string corrected text
+ */
+static function doReplacements($text, $arrReplacements){
+    foreach($arrReplacements as $key=>$value){
+        if(is_object($value) || is_array($value))
+            continue;
+        $text = str_replace(self::keyEscapePrefix.$key.self::keyEscapeSuffix, $value, $text);
+    }
+    $text = preg_replace('/('.preg_quote(self::keyEscapePrefix, '/').'\S+'.preg_quote(self::keyEscapeSuffix).')/i', '', $text);
+
+    return $text;
+}
+
+/**
+ * This function retrieves raw message subject from text representation of mail message.
+ *
+ * @category Message processing
+ * 
+ * @param string $rfc822 - Mail message in rfc822 format
+ * 
+ * @return string with subject
+ */
+public static function getSubject($rfc822){
+    $separator = "\n";
+    $reSubj = '/^(Subject\:)/i';
+    $line = trim(strtok($rfc822, $separator));
+
+    while ($line !== false) {
+        if(preg_match($reSubj, $line)){
+            return trim(preg_replace($reSubj, '', $line));
+        }
+        $line = trim(strtok( $separator ));
+    }
+}
+
+}
