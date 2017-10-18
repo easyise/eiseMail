@@ -300,11 +300,11 @@ function send($arrMsg=null){
 
         if (!$msg['mail_from']){
             $this->v('MAIL FROM is not set for the message '.var_export($msg, true));
-            $this->arrMessages[$ix]['error'] = 'MAIL FROM is not set for the message'; continue;
+            $this->arrMessages[$ix]['error'] = 'MAIL FROM not set'; continue;
         }
         if (!$msg['rcpt_to']){
             $this->v('RCPT TO is not set for the message '.var_export($msg, true));
-            $this->arrMessages[$ix]['error'] = 'RCPT TO is not set for the message'; continue;
+            $this->arrMessages[$ix]['error'] = 'RCPT TO not set'; continue;
         }
 
         $msg['fullMessage'] = $this->msg2String($msg);        
@@ -362,6 +362,20 @@ function send($arrMsg=null){
     fclose($this->connect);
 
     $this->v('SMTP session complete');
+
+    $err = '';
+    foreach ($this->arrMessages as $ix => $msg) {
+        if($msg['error'])
+            $err .= ($err ? "\n" : '').$msg['error'].
+                (count($this->arrMessages)>=1 
+                    ? " (message #".($ix+1).", subj: {$msg['Subject']})"
+                    : ''
+                    );
+    }
+
+    if($err)
+        throw new eiseMailException("Mail send error: {$err}", 1, null, $this->arrMessages);
+        
 
     return $this->arrMessages;
 
@@ -542,7 +556,7 @@ private function isItOk($rcv, $arrExpectedReplyCode){
     $code = (int)$arr[1];
 
     if (!in_array($code, $arrExpectedReplyCode)){
-        throw new eiseMailException("Bad response: ".$rcv." $code", $this->arrMessages);
+        throw new eiseMailException("Bad response: {$rcv} {$code}", 1, null, $this->arrMessages);
     }
 
 }
@@ -1006,7 +1020,7 @@ class eiseMailException extends Exception {
  * @param $arrMessages {array} array of messages that can be set as an attemp to save unsent / unhandled messages in case of exception.
  * 
  */
-function __construct($usrMsg, $arrMessages=array()){
+function __construct($usrMsg, $code=1, $previous=null, $arrMessages=array()){
     parent::__construct($usrMsg);
     $this->arrMessages = $arrMessages;
 }
