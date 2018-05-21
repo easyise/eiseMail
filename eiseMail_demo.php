@@ -79,7 +79,7 @@ Message with 2 text attachments
 */
 $msg = array('From'=> EMAIL_FROM
             , 'To' => EMAIL_TO1
-            , 'CC' => EMAIL_TO2
+            , 'Cc' => EMAIL_TO2
             , 'Subject' => 'Message with attachments'
             , 'Text' => 'Hello there'
             , 'Attachments' => array(
