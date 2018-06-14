@@ -478,8 +478,12 @@ private function msg2String($msg){
     }
     
     $msg['rcpt_to_string'] = is_array($msg['rcpt_to'] ? implode(', ', $msg['rcpt_to']) : $msg['rcpt_to']);
+    $subj = (!mb_check_encoding($msg['Subject'], 'ASCII') && mb_check_encoding($msg['Subject'], 'UTF-8')
+        ? '=?UTF-8?B?'.base64_encode($msg['Subject']).'?='
+        : $msg['Subject']
+        );
     
-    $strMessage = "Subject: ".$msg['Subject']."\r\n"
+    $strMessage = "Subject: {$subj}\r\n"
         ."From: ".($msg['From'] ? $msg['From'] : $msg['mail_from'])."\r\n"
         ."To: ".($msg['To'] ? $msg['To'] : $msg['rcpt_to_string'])."\r\n"
         .($msg["Cc"] ? "Cc: {$msg["Cc"]}\r\n" : "")
