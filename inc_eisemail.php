@@ -196,11 +196,10 @@ function addMessage ($msg){
     $msg = array_merge($msgDefault, $msg);
 
     if($this->conf['login']){
-        $arr = (array)imap_rfc822_parse_adrlist($msg['mail_from'], '');
+        $arr = (array)imap_rfc822_parse_adrlist(($msg['mail_from'] ? $msg['mail_from'] : $msg['From']), '');
         $from = $arr[0];
-
         if($from->mailbox.'@'.$from->host!=$this->conf['login']){
-            $msg['Reply-To'] = $msg['mail_from'];
+            $msg['Reply-To'] = ($msg['mail_from'] ? $msg['mail_from'] : $msg['From']);
             $msg['mail_from'] = $this->conf['login'];
         }
     }
