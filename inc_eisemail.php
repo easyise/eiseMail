@@ -422,7 +422,14 @@ private function msg2String($msg){
 
     if($msg['charset'] && $msg['flagEscapeSubject']){
         $msg['Subject'] = "=?{$msg['charset']}?B?".base64_encode($msg['Subject'])."?=";
-    }   
+    } 
+
+    $msg['Text'] = ($msg['Head'] ? $msg['Head']."\r\n\r\n" : '')
+            .$msg['Text']."\r\n\r\n"
+            .($msg['Bottom'] ? $msg['Bottom']."\r\n\r\n" : '');
+
+    // fix bare line ends error with some SMTPs
+    $msg['Text'] = str_replace("\n", "\r\n", str_replace("\r\n", "\n", $msg['Text']));
 
     $strMessage = '';
     if(is_array($msg['Attachments']))
@@ -460,9 +467,7 @@ private function msg2String($msg){
             ."--".self::$Boundary."\r\nContent-Type: ".$msg["Content-Type"]."\r\n"
             ."Content-Transfer-Encoding: 8bit\r\n"
             ."Content-Disposition: inline;\r\n\r\n"
-            .($msg['Head'] ? $msg['Head']."\r\n\r\n" : '')
-            .$msg['Text']."\r\n\r\n"
-            .($msg['Bottom'] ? $msg['Bottom']."\r\n\r\n" : '')
+            .$msg['Text']
             .$strMessage
             //."----".self::$Boundary."--\r\n"
             ;
@@ -470,9 +475,7 @@ private function msg2String($msg){
     } else { // if there're no attachments
         $strMessage = 
             "Content-Type: ".$msg["Content-Type"]."\r\n\r\n"
-            .($msg['Head'] ? $msg['Head']."\r\n\r\n" : '')
-            .$msg['Text']."\r\n\r\n"
-            .($msg['Bottom'] ? $msg['Bottom']."\r\n\r\n" : '');
+            .$msg['Text'];
            
     }
     
