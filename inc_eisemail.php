@@ -918,7 +918,7 @@ private function fetch_file($part, $partID){
         $arrAtt['Content-Type'] = $part->subtype;
         if($this->conf['flagSaveAttachments']){
             $ext = pathinfo($arrAtt['filename'], PATHINFO_EXTENSION);
-            $fileName = tempnam(sys_get_temp_dir(), 'eiseIMAP_');
+            $fileName = tempnam(sys_get_temp_dir(), 'eiseIMAP_').($ext ? '.'.$ext : '');
             $arrAtt['content'] = null;
             file_put_contents($fileName, $att);
             $arrAtt['temp_filename'] = $fileName;
