@@ -325,6 +325,7 @@ function send($arrMsg=null){
         }
 
         try {
+            $this->v(sprintf("Sending message %d of %d", ($ix+1), count($this->arrMessages)));
             $size_msg=strlen($msg['fullMessage']); 
             $strMailFrom = "MAIL FROM:".$msg['mail_from']." SIZE={$size_msg}\r\n";
             $this->say( $strMailFrom, array(250) );
@@ -558,11 +559,12 @@ private function isItOk($rcv, $arrExpectedReplyCode){
         return;
     }
 
-    preg_match("/^([0-9]{3})/", $rcv, $arr);
-    $code = (int)$arr[1];
+    if(preg_match("/^([0-9]{3})/", $rcv, $arr)){
+        $code = (int)$arr[1];
 
-    if (!in_array($code, $arrExpectedReplyCode)){
-        throw new eiseMailException("Bad response: {$rcv} {$code}", 1, null, $this->arrMessages);
+        if (!in_array($code, $arrExpectedReplyCode)){
+            throw new eiseMailException("Bad response: {$rcv} {$code}", 1, null, $this->arrMessages);
+        }
     }
 
 }
