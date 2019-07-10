@@ -253,6 +253,8 @@ function send($arrMsg=null){
     if(count($this->arrMessages)==0)
         throw new eiseMailException('Message queue is empty');
 
+    $this->v("Sending messages: ".count($this->arrMessages)."\n");
+
     // connect
     $this->connect = @fsockopen ($this->conf["host"], $this->conf["port"], $errno, $errstr, 30);
 
@@ -313,15 +315,18 @@ function send($arrMsg=null){
         }
 
         if($this->conf['flagAddToSentItems'] && $this->conf['imap_host']){
-            $imap = new eiseIMAP(array(
-                        'host' => $this->conf['imap_host']
-                        , 'login' => $this->conf['imap_login'] ? $this->conf['imap_login'] : $this->conf['login'] 
-                        , 'password' => $this->conf['imap_password'] ? $this->conf['imap_password'] : $this->conf['password']
-                        , 'verbose' => $this->conf['verbose']
-                        , 'mailbox_name' => 'Sent Items'
-                        ));
+            if( !$this->imap ){
+                $this->imap = new eiseIMAP(array(
+                            'host' => $this->conf['imap_host']
+                            , 'login' => $this->conf['imap_login'] ? $this->conf['imap_login'] : $this->conf['login'] 
+                            , 'password' => $this->conf['imap_password'] ? $this->conf['imap_password'] : $this->conf['password']
+                            , 'verbose' => $this->conf['verbose']
+                            , 'mailbox_name' => 'Sent Items'
+                            ));
 
-            $imap->connect();
+                $this->imap->connect();    
+            }
+            
         }
 
         try {
@@ -341,9 +346,9 @@ function send($arrMsg=null){
             
             $this->arrMessages[$ix]['send_time'] = mktime();
 
-            if($this->conf['flagAddToSentItems'] && $this->conf['imap_host']){
+            if($this->conf['flagAddToSentItems'] && $this->conf['imap_host'] && $this->imap){
 
-                $imap->save($msg['fullMessage']);
+                $this->imap->save($msg['fullMessage']);
 
             }
 
@@ -1068,8 +1073,9 @@ const passSymbolsToShow = 3;
  * @return void
  */
 protected function v($string){
-    if($this->conf['verbose']){
-        echo ($this->conf['verbose']==='htmlspecialchars' ? '<br>'.htmlspecialchars(Date('Y-m-d H:i:s').': '.$string) : "\r\n".Date('Y-m-d H:i:s').': '.trim($string));
+    if($this->conf['verbose']) {
+        $string = (strlen($string)>1024 ? "(data length ".strlen($string).")" : $string);
+        echo (Date('Y-m-d H:i:s').': '.($this->conf['verbose']==='htmlspecialchars' ? htmlspecialchars($string) : trim($string) )."\n");
         ob_flush();
         flush();
     }
