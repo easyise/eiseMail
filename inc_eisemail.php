@@ -125,7 +125,7 @@ public static $arrDefaultConfig = Array(
 function __construct($arrConfig){
     
     $this->conf = array_merge(self::$arrDefaultConfig, $arrConfig);
-    $this->coverPassword();
+
 }
 
 /**
@@ -260,6 +260,7 @@ function send($arrMsg=null){
 
     if (!$this->connect) throw new eiseMailException("Can't connect to {$this->conf["host"]}:{$this->conf["port"]} - [$errno] $errstr");
 
+    $this->coverPassword();
     $this->v("SMTP session started with the following params:\r\n".
         var_export(array(
                     $this->conf["host"]
