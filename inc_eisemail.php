@@ -1116,6 +1116,9 @@ static function explodeAddresses($addrList, $defaultDomain = ''){
     $arrRet = array();
 
     foreach($arr as $o){
+        if(!$o->host || $o->host==='.SYNTAX-ERROR.'){
+            continue;
+        }
         $arrRet[] = ($o->personal ? '"'.$o->personal.'" ' : '').'<'.$o->mailbox.'@'.$o->host.'>';
     }
     return $arrRet;
