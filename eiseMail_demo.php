@@ -34,18 +34,29 @@ ob_implicit_flush(1);
 
 include_once('inc_eisemail.php');
 
-define('EMAIL_FROM', '"YOUR_NAME" <YOUR_GOOGLE_LOGIN@gmail.com>');
-define('EMAIL_TO1', '"YOUR OTHER NAME" <you@other.address>');
-define('EMAIL_TO2', '"...AND OTHER NAME" <you@some_other.address>');
+define('EMAIL_FROM', '"Ilya Eliseev" <ilya.eliseev@ru.yusen-logistics.com>');
+define('EMAIL_TO1', '"IE" <ie@e-ise.com>');
+// define('EMAIL_TO2', '"...AND OTHER NAME" <you@some_other.address>');
 
 /*
 Sender object initialization with server credentials
 */
+// $sender  = new eiseMail(array(
+//             'subjPrefix'=>'[eiseMail demo]'
+//             , 'host' => "smtp.gmail.com"
+//             , 'port' => 587 //465
+//             , 'login' => trim(eiseMail::prepareAddressRFC(EMAIL_FROM), '<>') // should be the same as From address
+//             , 'password' => '*********'
+//             , 'debug' => false // if set to TRUE send() method outputs all negotiations to std output as plain text
+//             , 'verbose' => true // if set to TRUE send() method outputs all negotiations to std output as plain text
+//             , 'tls' => true // if TRUE, then TLS encryption applied
+// ));
 $sender  = new eiseMail(array(
 			'subjPrefix'=>'[eiseMail demo]'
-			, 'host' => "smtp.gmail.com"
-            , 'port' => 587 //465
-            , 'login' => trim(eiseMail::prepareAddressRFC(EMAIL_FROM), '<>') // should be the same as From address
+			, 'host' => 'outlook.office365.com'
+            , 'port' => "587"
+            , 'tls' => true
+            , 'login' => 'robot.treasury@ru.yusen-logistics.com' // should be the same as From address
             , 'password' => '*********'
             , 'debug' => false // if set to TRUE send() method outputs all negotiations to std output as plain text
 			, 'verbose' => true // if set to TRUE send() method outputs all negotiations to std output as plain text
@@ -62,60 +73,60 @@ $msg = array('From'=> EMAIL_FROM
             );
 $sender->addMessage($msg);
 
-/*
-Simple message that should raise error
-*/
-$msg = array('From'=> EMAIL_FROM
+// /*
+// Simple message that should raise error
+// */
+// $msg = array('From'=> EMAIL_FROM
 
-            , 'To' => 'the error should occur'
+//             , 'To' => 'the error should occur'
 
-            , 'Subject' => 'Message with error'
-            , 'Text' => 'You should not receive this mail'
-            );
-$sender->addMessage($msg);
+//             , 'Subject' => 'Message with error'
+//             , 'Text' => 'You should not receive this mail'
+//             );
+// $sender->addMessage($msg);
 
-/*
-Message with 2 text attachments
-*/
-$msg = array('From'=> EMAIL_FROM
-            , 'To' => EMAIL_TO1
-            , 'Cc' => EMAIL_TO2
-            , 'Subject' => 'Message with attachments'
-            , 'Text' => 'Hello there'
-            , 'Attachments' => array(
-            	array ('filename'=>'file1.txt'
-	            	, 'content'=>"Hello\r\nfrom the text file"
-	            	, 'Content-Type'=>'text/plain')
-            	, array ('filename'=>'file2.txt'
-	            	, 'content'=>"Hello\r\nfrom the text file again"
-	            	, 'Content-Type'=>'text/plain')
-            	)
-            , 'Bottom' => '##bottom_to_be_added##'
-            , 'bottom_to_be_added' => "\r\n\r\nThis is the bottom!"
-            );
-$sender->addMessage($msg);
+// /*
+// Message with 2 text attachments
+// */
+// $msg = array('From'=> EMAIL_FROM
+//             , 'To' => EMAIL_TO1
+//             , 'Cc' => EMAIL_TO2
+//             , 'Subject' => 'Message with attachments'
+//             , 'Text' => 'Hello there'
+//             , 'Attachments' => array(
+//             	array ('filename'=>'file1.txt'
+// 	            	, 'content'=>"Hello\r\nfrom the text file"
+// 	            	, 'Content-Type'=>'text/plain')
+//             	, array ('filename'=>'file2.txt'
+// 	            	, 'content'=>"Hello\r\nfrom the text file again"
+// 	            	, 'Content-Type'=>'text/plain')
+//             	)
+//             , 'Bottom' => '##bottom_to_be_added##'
+//             , 'bottom_to_be_added' => "\r\n\r\nThis is the bottom!"
+//             );
+// $sender->addMessage($msg);
 
-/*
-Message with 2 kinds of attachment
-*/
-$msg = array('mail_from'=> EMAIL_FROM
-            , 'rcpt_to' => EMAIL_TO1
-            , 'Subject' => 'Message with 2 kinds of attachments'
-            , 'Text' => 'Hello there'
-            , 'Attachments' => array(
-            	array ('filename'=>'file1.txt'
-	            	, 'content'=>"Hello\r\nfrom the text file"
-	            	, 'Content-Type'=>'text/plain')
-            	, array ('filename'=>'file2.txt'
-	            	, 'content'=>"Hello\r\nfrom the text file again"
-	            	, 'Content-Type'=>'text/plain')
-            	, array ('filename'=>'welcome_to_the_internet.jpg'
-	            	, 'content'=>file_get_contents('welcome_to_the_internet.jpg')
-	            	, 'Content-Type'=>'image/jpeg')
+// /*
+// Message with 2 kinds of attachment
+// */
+// $msg = array('mail_from'=> EMAIL_FROM
+//             , 'rcpt_to' => EMAIL_TO1
+//             , 'Subject' => 'Message with 2 kinds of attachments'
+//             , 'Text' => 'Hello there'
+//             , 'Attachments' => array(
+//             	array ('filename'=>'file1.txt'
+// 	            	, 'content'=>"Hello\r\nfrom the text file"
+// 	            	, 'Content-Type'=>'text/plain')
+//             	, array ('filename'=>'file2.txt'
+// 	            	, 'content'=>"Hello\r\nfrom the text file again"
+// 	            	, 'Content-Type'=>'text/plain')
+//             	, array ('filename'=>'welcome_to_the_internet.jpg'
+// 	            	, 'content'=>file_get_contents('welcome_to_the_internet.jpg')
+// 	            	, 'Content-Type'=>'image/jpeg')
 
-            	)
-            );
-$sender->addMessage($msg);
+//             	)
+//             );
+// $sender->addMessage($msg);
 
 try {
     $arrMessages = $sender->send();
