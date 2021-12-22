@@ -273,12 +273,21 @@ function send($arrMsg=null){
 
     $this->listen();
     
-    $this->say("EHLO ".$this->conf["localhost"]."\r\n");
+    $this->say("EHLO ".$this->conf["localhost"]."\r\n", array(250));
     
     // TLSing
     if ($this->conf['tls']){
         $this->say( "STARTTLS\r\n" , array(220));
-        stream_socket_enable_crypto($this->connect, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
+        // @stream_socket_enable_crypto($this->connect, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
+        $crypto_method = STREAM_CRYPTO_METHOD_TLS_CLIENT;
+
+        if (defined('STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT')) {
+            $crypto_method |= STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT;
+            $crypto_method |= STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT;
+        }
+
+        stream_socket_enable_crypto($this->connect, true, $crypto_method);
+        
         $this->say( "HELO ".$this->conf["localhost"]."\r\n", array(250));
     }
 
