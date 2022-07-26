@@ -370,6 +370,7 @@ function send($arrMsg=null){
         $this->say( $strReset, array(250));
 
     }
+    unset($msg);
 
     $strQuit = "QUIT\r\n";
     $this->say( $strQuit, array(221) );
