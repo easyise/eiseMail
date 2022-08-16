@@ -224,8 +224,8 @@ function addMessage ($msg){
         $msg['rcpt_to'] = array($msg['rcpt_to']);
     }
 
-    foreach($msg['rcpt_to'] as &$rcpt){
-        $rcpt = self::prepareAddressRFC( $rcpt ) ;
+    foreach($msg['rcpt_to'] as $ix=>$rcpt){
+        $msg['rcpt_to'][$ix] = self::prepareAddressRFC( $rcpt ) ;
     }
     
     $msg['rcpt_to'] = array_unique($msg['rcpt_to']);
@@ -306,7 +306,13 @@ function send($arrMsg=null){
 
         if($this->conf['debug']){
             $msg['mail_from'] = ($this->conf['mail_from_debug'] ? $this->conf['mail_from_debug'] : $msg['mail_from']);
-            $msg['rcpt_to'] = array( ($this->conf['rcpt_to_debug'] ? $this->conf['rcpt_to_debug'] : $msg['rcpt_to']) );
+            $msg['rcpt_to'] =  ($this->conf['rcpt_to_debug'] 
+                ? (!is_array($this->conf['rcpt_to_debug'])    
+                    ? $this->conf['rcpt_to_debug']
+                    : array($this->conf['rcpt_to_debug'])
+                ) 
+                : $msg['rcpt_to']
+            );
         }
 
         if (!$msg['mail_from']){
