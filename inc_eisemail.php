@@ -293,16 +293,25 @@ function send($arrMsg=null){
 
     // auth
     if ($this->conf["login"]) {
-        $this->say( "AUTH LOGIN\r\n" , array(334));
-        $strLogin = base64_encode($this->conf["login"])."\r\n";
-        $this->say( $strLogin , array(334));
+        if($this->conf['password']){
+            $this->say( "AUTH LOGIN\r\n" , array(334));
+            $strLogin = base64_encode($this->conf["login"])."\r\n";
+            $this->say( $strLogin , array(334));
 
-        $strPassword = base64_encode($this->conf["password"])."\r\n";
-        $this->say( $strPassword, array(235));
+            $strPassword = base64_encode($this->conf["password"])."\r\n";
+            $this->say( $strPassword, array(235));
 
-    }
+        } elseif ($this->conf['xoauth2_token']){
+            $this->say("auth xoauth2\r\n", array(334));
+            $strAuthString = base64_encode("user={$this->conf["login"]}\x01auth=Bearer {$this->conf['xoauth2_token']}\x01\x01")."\r\n";
+            $this->say( $strAuthString , array(235));
+        }
+        
 
-    foreach($this->arrMessages as $ix=>&$msg){
+    } 
+
+
+    foreach($this->arrMessages as $ix=>$msg){
 
         if($this->conf['debug']){
             $msg['mail_from'] = ($this->conf['mail_from_debug'] ? $this->conf['mail_from_debug'] : $msg['mail_from']);
