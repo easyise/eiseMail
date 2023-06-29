@@ -258,7 +258,7 @@ function send($arrMsg=null){
     // connect
     $this->connect = @fsockopen ($this->conf["host"], $this->conf["port"], $errno, $errstr, 30);
 
-    if (!$this->connect) throw new eiseMailException("Can't connect to {$this->conf["host"]}:{$this->conf["port"]} - [$errno] $errstr");
+    if (!$this->connect) throw new eiseMailException("Can't connect to {$this->conf["host"]}:{$this->conf["port"]} - [$errno] $errstr", 1, null, $this->arrMessages);
 
     $this->coverPassword();
     $this->v("SMTP session started with the following params:\r\n".
