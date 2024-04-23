@@ -68,6 +68,8 @@ public static $arrDefaultConfig = Array(
       , 'tls' => false // flag use TLS channel encryption
       , "login" => ""  // SMPT server login
       , "password" => "" // SMPT server password
+      , 'authenticate' => 'email' // the way app autheticates with SMTP
+      , 'serviceaccount_disclaimer' => 'DO NOT REPLY' // statement to put after user name in From: field, e.g. "Ilya Eliseev DO NOT REPLY" <bot@email.org> 
       , "localhost" => "localhost" // defines how to introduce yourself to SMTP server with HELO/EHLO SMTP command
       
       , 'Subject' => '' // default subject for message queue 
@@ -201,6 +203,11 @@ function addMessage ($msg){
         if($from->mailbox.'@'.$from->host!=$this->conf['login']){
             $msg['Reply-To'] = ($msg['mail_from'] ? $msg['mail_from'] : $msg['From']);
             $msg['mail_from'] = $this->conf['login'];
+            if($this->conf['authenticate']=='serviceaccount'){
+                $personal = ($from->personal ? $from->personal : $from->mailbox);
+                $msg['From'] = "\"{$personal} {$this->conf['serviceaccount_disclaimer']}\" <{$this->conf['login']}>";
+            }
+            
         }
     }
 
@@ -272,7 +279,7 @@ function send($arrMsg=null){
         );
 
     $this->listen();
-    
+
     $this->say("EHLO ".$this->conf["localhost"]."\r\n", array(250));
     
     // TLSing
@@ -314,8 +321,8 @@ function send($arrMsg=null){
     foreach($this->arrMessages as $ix=>$msg){
 
         if($this->conf['debug']){
-            $msg['mail_from'] = ($this->conf['mail_from_debug'] ? $this->conf['mail_from_debug'] : $msg['mail_from']);
-            $msg['rcpt_to'] =  ($this->conf['rcpt_to_debug'] 
+            $this->arrMessages[$ix]['mail_from'] = ($this->conf['mail_from_debug'] ? $this->conf['mail_from_debug'] : $msg['mail_from']);
+            $this->arrMessages[$ix]['rcpt_to'] =  ($this->conf['rcpt_to_debug'] 
                 ? (!is_array($this->conf['rcpt_to_debug'])    
                     ? $this->conf['rcpt_to_debug']
                     : array($this->conf['rcpt_to_debug'])
@@ -324,19 +331,19 @@ function send($arrMsg=null){
             );
         }
 
-        if (!$msg['mail_from']){
+        if (!$this->arrMessages[$ix]['mail_from']){
             $this->v('MAIL FROM is not set for the message '.var_export($msg, true));
             $this->arrMessages[$ix]['error'] = 'MAIL FROM not set'; continue;
         }
-        if (!$msg['rcpt_to']){
+        if (!$this->arrMessages[$ix]['rcpt_to']){
             $this->v('RCPT TO is not set for the message '.var_export($msg, true));
             $this->arrMessages[$ix]['error'] = 'RCPT TO not set'; continue;
         }
 
-        $msg['fullMessage'] = $this->msg2String($msg);        
+        $this->arrMessages[$ix]['fullMessage'] = $this->msg2String($this->arrMessages[$ix]);        
 
         if ($this->conf['debug']){
-            echo $msg['fullMessage'];
+            echo $this->arrMessages[$ix]['fullMessage'];
         }
 
         if($this->conf['flagAddToSentItems'] && $this->conf['imap_host']){
@@ -355,6 +362,9 @@ function send($arrMsg=null){
         }
 
         try {
+
+            $msg = $this->arrMessages[$ix];
+
             $this->v(sprintf("Sending message %d of %d", ($ix+1), count($this->arrMessages)));
             $size_msg=strlen($msg['fullMessage']); 
             $strMailFrom = "MAIL FROM:".$msg['mail_from']." SIZE={$size_msg}\r\n";
@@ -368,7 +378,7 @@ function send($arrMsg=null){
             $this->say( "DATA\r\n", array(354));
             
             $this->say( $msg['fullMessage']."\r\n.\r\n", array(250));
-            
+
             $this->arrMessages[$ix]['send_time'] = mktime();
 
             if($this->conf['flagAddToSentItems'] && $this->conf['imap_host'] && $this->imap){
@@ -404,9 +414,9 @@ function send($arrMsg=null){
                     );
     }
 
-    if($err)
+    if($err){
         throw new eiseMailException("Mail send error: {$err}", 1, null, $this->arrMessages);
-        
+    }
 
     return $this->arrMessages;
 
@@ -421,13 +431,14 @@ function send($arrMsg=null){
  */
 public function getMessageSource($ixToGet = null){
 
-    foreach($this->arrMessages as $ix=>&$msg){
+    foreach($this->arrMessages as $ix=>$msg){
         if($ixToGet!==null){
             if($ix===$ixToGet)
-                return $this->msg2String($msg);
+                return $this->msg2String($this->arrMessages[$ix]);
                     
-        } else 
-            return $this->msg2String($msg);
+        } else {
+            return $this->msg2String($this->arrMessages[$ix]);
+        }
     }
 
 }
@@ -439,7 +450,7 @@ public function getMessageSource($ixToGet = null){
  *  
  * @return string Ready-to-send message data after SMTP DATA command.
  */
-private function msg2String($msg){
+private function msg2String(&$msg){
 
     $conf = $this->conf;
 
@@ -450,7 +461,7 @@ private function msg2String($msg){
     $msg['Subject'] = self::doReplacements($msg['Subject'], $msg);        
     $msg['Head'] = self::doReplacements($msg['Head'], $msg);        
     $msg['Text'] = self::doReplacements($msg['Text'], $msg);        
-    $msg['Bottom'] = self::doReplacements($msg['Bottom'], $msg);     
+    $msg['Bottom'] = self::doReplacements($msg['Bottom'], $msg);    
 
     if($msg['charset'] && $msg['flagEscapeSubject']){
         $msg['Subject'] = "=?{$msg['charset']}?B?".base64_encode($msg['Subject'])."?=";
@@ -594,6 +605,7 @@ private function isItOk($rcv, $arrExpectedReplyCode){
         $code = (int)$arr[1];
 
         if (!in_array($code, $arrExpectedReplyCode)){
+            $this->v("ERROR: {$rcv}");
             throw new eiseMailException("Bad response: {$rcv} {$code}", 1, null, $this->arrMessages);
         }
     }
