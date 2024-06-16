@@ -80,6 +80,7 @@ public static $arrDefaultConfig = Array(
       , 'imap_host' => '' // IMAP host address
       , 'imap_login' => '' // (optional) IMAP login. By default it is set by 'login' field. Specify only if it differs from it.
       , 'imap_password' => '' // (optional) IMAP password.
+      , 'imap_sent_items_mailbox' => 'Sent Items'
 
       , 'verbose' => false // when set to TRUE class methods are sending actual conversation data to standard output
       , 'debug' => false // when set to TRUE mail is actually sent to 'rcpt_to_debug' address + verbose
@@ -353,7 +354,7 @@ function send($arrMsg=null){
                             , 'login' => $this->conf['imap_login'] ? $this->conf['imap_login'] : $this->conf['login'] 
                             , 'password' => $this->conf['imap_password'] ? $this->conf['imap_password'] : $this->conf['password']
                             , 'verbose' => $this->conf['verbose']
-                            , 'mailbox_name' => 'Sent Items'
+                            , 'mailbox_name' => $this->conf['imap_sent_items_mailbox']
                             ));
 
                 $this->imap->connect();    
